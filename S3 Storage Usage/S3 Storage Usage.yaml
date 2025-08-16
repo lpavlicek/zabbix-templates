@@ -1,0 +1,275 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: eb676ec661144a5bbe1f52c46cbbcce4
+      template: 'S3 Storage Usage'
+      name: 'S3 Storage Usage'
+      description: 'Monitorování využití S3 kompatibilního úložiště pomocí s3cmd'
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 4a9041df0aa044b3981d1fc171dc1101
+          name: 'S3 Objects Usage Percentage'
+          type: CALCULATED
+          key: s3.objects.percent
+          delay: 5m
+          value_type: FLOAT
+          units: '%'
+          params: 'last(//s3.total.objects)*100/{$S3.MAX_OBJECTS}'
+          description: 'Procentuální využití maximálního počtu objektů'
+          triggers:
+            - uuid: 4b9deef2990f46f1a9aac1cb6bb37fd9
+              expression: 'last(/S3 Storage Usage/s3.objects.percent)>{$S3.HIGH_PERCENT}'
+              name: 'S3 Objects count is critical ({ITEM.LASTVALUE}%)'
+              priority: HIGH
+              description: 'S3 objects count exceeded critical threshold of {$S3.HIGH_PERCENT}%'
+              tags:
+                - tag: component
+                  value: storage
+                - tag: scope
+                  value: objects
+            - uuid: b9a03b758a4541e59af7da8582222137
+              expression: 'last(/S3 Storage Usage/s3.objects.percent)>{$S3.WARNING_PERCENT}'
+              name: 'S3 Objects count is high ({ITEM.LASTVALUE}%)'
+              priority: WARNING
+              description: 'S3 objects count exceeded warning threshold of {$S3.WARNING_PERCENT}%'
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: storage
+                - tag: scope
+                  value: objects
+        - uuid: 1fbd1f58f0fe47139159756478f44385
+          name: 'S3 Total Usage (bytes)'
+          type: DEPENDENT
+          key: s3.total.bytes
+          units: B
+          description: 'Celková velikost všech dat v S3 úložišti'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - (\d+)\s+Total
+                - \1
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+        - uuid: c3b63d8808114fe09f01e94f4557c47b
+          name: 'S3 Total Objects Count'
+          type: DEPENDENT
+          key: s3.total.objects
+          description: 'Celkový počet objektů ve všech bucketech'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var lines = value.split('\n');
+                  var totalObjects = 0;
+                                    
+                  for (var i = 0; i < lines.length; i++) {
+                     var line = lines[i].trim();
+                     if (line.match(/^\d+\s+\d+\s+objects\s+s3:\/\//)) {
+                         var match = line.match(/^\d+\s+(\d+)\s+objects/);
+                         if (match) {
+                             totalObjects += parseInt(match[1]);
+                          }
+                     }
+                  }
+                                    
+                  return totalObjects;
+          master_item:
+            key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+        - uuid: 22c430cfbc434940bb86e9e7bb6c8037
+          name: 'S3 Storage Usage Percentage'
+          type: CALCULATED
+          key: s3.usage.percent
+          delay: 5m
+          value_type: FLOAT
+          units: '%'
+          params: 'last(//s3.total.bytes)*100/{$S3.MAX_CAPACITY}'
+          description: 'Procentuální využití kapacity úložiště'
+          triggers:
+            - uuid: 35028d8c907045d299f672847093afd8
+              expression: 'last(/S3 Storage Usage/s3.usage.percent)>{$S3.HIGH_PERCENT}'
+              name: 'S3 Storage usage is critical ({ITEM.LASTVALUE}%)'
+              priority: HIGH
+              description: 'S3 storage usage exceeded critical threshold of {$S3.HIGH_PERCENT}%'
+              tags:
+                - tag: component
+                  value: storage
+                - tag: scope
+                  value: capacity
+            - uuid: e0f796f774404381b0f29176e1deb17d
+              expression: 'last(/S3 Storage Usage/s3.usage.percent)>{$S3.WARNING_PERCENT}'
+              name: 'S3 Storage usage is high ({ITEM.LASTVALUE}%)'
+              priority: WARNING
+              description: 'S3 storage usage exceeded warning threshold of {$S3.WARNING_PERCENT}%'
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: storage
+                - tag: scope
+                  value: capacity
+        - uuid: e19fb9bd9b4a43c683ccc2eb418933d8
+          name: 'S3 Storage Raw Data'
+          type: EXTERNAL
+          key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+          delay: 1h
+          history: 7d
+          value_type: TEXT
+          description: 'Raw výstup z příkazu s3cmd du'
+          timeout: 6s
+          triggers:
+            - uuid: 9ec75316541a43bfb69b5161d9a14919
+              expression: 'find(/S3 Storage Usage/s3_usage_check.sh[{$S3.CONFIG_FILE}],,"regexp","ERROR:")=1'
+              name: 'S3 Storage monitoring failed'
+              priority: HIGH
+              description: 'S3 storage monitoring script returned error'
+              tags:
+                - tag: component
+                  value: storage
+                - tag: scope
+                  value: availability
+      discovery_rules:
+        - uuid: 4b07c055ad36442cb07ebdaf7a26b57e
+          name: 'S3 Buckets Discovery'
+          type: DEPENDENT
+          key: s3.buckets.discovery
+          description: 'Automatické objevování S3 bucketů'
+          item_prototypes:
+            - uuid: 68ee04f12b574996b8d45bd312e8b8e1
+              name: 'S3 Bucket [{#BUCKET_NAME}] Objects Count'
+              type: DEPENDENT
+              key: 's3.bucket.objects[{#BUCKET_NAME}]'
+              description: 'Počet objektů v bucketu {#BUCKET_NAME}'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - '\d+\s+(\d+)\s+objects\s+s3://{#BUCKET_NAME}/'
+                    - \1
+              master_item:
+                key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+            - uuid: 24ffe95e4c4b47e88c5fe6200ca467a0
+              name: 'S3 Bucket [{#BUCKET_NAME}] Size (bytes)'
+              type: DEPENDENT
+              key: 's3.bucket.size[{#BUCKET_NAME}]'
+              units: B
+              description: 'Velikost bucketu {#BUCKET_NAME} v bytech'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - '(\d+)\s+\d+\s+objects\s+s3://{#BUCKET_NAME}/'
+                    - \1
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              master_item:
+                key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+          graph_prototypes:
+            - uuid: a30662cb34eb45c5ad9b8000f0cf9188
+              name: 'S3 Bucket [{#BUCKET_NAME}] Objects'
+              show_work_period: 'NO'
+              show_triggers: 'NO'
+              graph_items:
+                - drawtype: FILLED_REGION
+                  color: C80000
+                  calc_fnc: ALL
+                  item:
+                    host: 'S3 Storage Usage'
+                    key: 's3.bucket.objects[{#BUCKET_NAME}]'
+            - uuid: 28b86ed9351b41aca320f21a4f3f4911
+              name: 'S3 Bucket [{#BUCKET_NAME}] Usage'
+              show_work_period: 'NO'
+              show_triggers: 'NO'
+              graph_items:
+                - drawtype: FILLED_REGION
+                  color: 1A7C11
+                  calc_fnc: ALL
+                  item:
+                    host: 'S3 Storage Usage'
+                    key: 's3.bucket.size[{#BUCKET_NAME}]'
+          master_item:
+            key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var lines = value.split('\n');
+                  var buckets = [];
+                                    
+                  for (var i = 0; i < lines.length; i++) {
+                      var line = lines[i].trim();
+                      if (line.match(/^\d+\s+\d+\s+objects\s+s3:\/\//)) {
+                           var match = line.match(/s3:\/\/([^\/]+)\//);
+                           if (match) {
+                               buckets.push({
+                                   '{#BUCKET_NAME}': match[1]
+                               });
+                           }
+                      }
+                  }
+                                    
+                  return JSON.stringify(buckets);
+      macros:
+        - macro: '{$S3.CONFIG_FILE}'
+          value: /etc/zabbix/external_scripts.d/s3_usage.cfg
+          description: 'Cesta ke konfiguračnímu souboru s3cmd'
+        - macro: '{$S3.HIGH_PERCENT}'
+          value: '90'
+          description: 'Procento při kterém se zobrazí high severity'
+        - macro: '{$S3.MAX_CAPACITY}'
+          value: '1099511627776'
+          description: 'Maximální kapacita S3 úložiště v bytech (default 1TB)'
+        - macro: '{$S3.MAX_OBJECTS}'
+          value: '1000000'
+          description: 'Maximální počet objektů v S3 úložišti'
+        - macro: '{$S3.WARNING_PERCENT}'
+          value: '75'
+          description: 'Procento při kterém se zobrazí warning'
+  graphs:
+    - uuid: 772f0afb6abe4f84a54e5da39723f396
+      name: 'S3 Objects Usage Percentage'
+      show_work_period: 'NO'
+      show_triggers: 'NO'
+      graph_items:
+        - color: C80000
+          calc_fnc: ALL
+          item:
+            host: 'S3 Storage Usage'
+            key: s3.objects.percent
+    - uuid: 9ce5c27ce61546a5822cb4633b08590a
+      name: 'S3 Storage Usage (bytes)'
+      yaxismax: '0'
+      show_work_period: 'NO'
+      graph_items:
+        - drawtype: FILLED_REGION
+          color: 1A7C11
+          calc_fnc: ALL
+          item:
+            host: 'S3 Storage Usage'
+            key: s3.total.bytes
+    - uuid: 67563606a10f4b54a338e91711bd5f4e
+      name: 'S3 Storage Usage Percentage'
+      show_work_period: 'NO'
+      show_triggers: 'NO'
+      graph_items:
+        - color: 1A7C11
+          calc_fnc: ALL
+          item:
+            host: 'S3 Storage Usage'
+            key: s3.usage.percent
+    - uuid: c2e341e3434a4e07b653515ee80126c7
+      name: 'S3 Total Objects Count'
+      show_work_period: 'NO'
+      graph_items:
+        - drawtype: FILLED_REGION
+          color: C80000
+          calc_fnc: ALL
+          item:
+            host: 'S3 Storage Usage'
+            key: s3.total.objects
