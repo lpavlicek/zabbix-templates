@@ -1,0 +1,175 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: c0d4d5edb5654148a7927b5c1314b85a
+      template: 'HTTP to HTTPS Redirect Check'
+      name: 'HTTP to HTTPS Redirect Check'
+      description: 'The template tests whether the target host redirects HTTP to HTTPS for aliases specified in the user macro {$HTTP_REDIRECT_ALIASES}. Aliases are usually DNS names, but they can also be IP addresses.'
+      vendor:
+        name: lpavlicek
+        version: 7.4-1 
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: d6ea11b3792047e896ec5558556d1268
+          name: 'HTTP Redirect Hostnames List'
+          type: CALCULATED
+          key: http.redirect.hostnames
+          delay: 1h
+          value_type: TEXT
+          params: 'concat("{$HTTP_REDIRECT_ALIASES}","")'
+          description: 'Returns the comma-separated list of hostnames defined in the {$HTTP_REDIRECT_ALIASES} macro. This value serves as the data source for LLD.'
+          tags:
+            - tag: component
+              value: http-redirect
+      discovery_rules:
+        - uuid: 2467238d33ce4ba19fd72d1cc0ab52cb
+          name: 'HTTP Redirect Endpoints Discovery'
+          type: DEPENDENT
+          key: http.redirect.discovery
+          item_prototypes:
+            - uuid: dba171bb62324bd6ad5f9aff8223353b
+              name: 'HTTP Redirect Check for {#HOSTNAME}'
+              type: HTTP_AGENT
+              key: 'http.redirect.check[{#HOSTNAME}]'
+              delay: 5m
+              value_type: TEXT
+              timeout: '{$HTTP_REDIRECT_TIMEOUT}'
+              url: 'http://{#HOSTNAME}'
+              status_codes: 200-599
+              follow_redirects: 'NO'
+              headers:
+                - name: User-Agent
+                  value: 'Zabbix HTTP Redirect Monitor'
+              retrieve_mode: HEADERS
+              tags:
+                - tag: component
+                  value: http-redirect
+            - uuid: 5bf0787d811c4a1db956c04ca85f0b3a
+              name: 'HTTP Redirect is HTTPS for {#HOSTNAME}'
+              type: DEPENDENT
+              key: 'http.redirect.is_https[{#HOSTNAME}]'
+              description: 'Returns 1 if Location header starts with https://, 0 otherwise'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var location = value.trim();
+                      if (location.toLowerCase().startsWith('https://')) {
+                        return 1;
+                      }
+                      return 0
+              master_item:
+                key: 'http.redirect.location[{#HOSTNAME}]'
+              tags:
+                - tag: component
+                  value: http-redirect
+            - uuid: d9f56f1650244345a2d19a18eb5fd04c
+              name: 'HTTP Redirect Location for {#HOSTNAME}'
+              type: DEPENDENT
+              key: 'http.redirect.location[{#HOSTNAME}]'
+              value_type: TEXT
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - '(?i)Location:\s*([^\r\n]+)'
+                    - \1
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: ''''''
+              master_item:
+                key: 'http.redirect.check[{#HOSTNAME}]'
+              tags:
+                - tag: component
+                  value: http-redirect
+            - uuid: 82b5450639c44c3bbe619a143d328429
+              name: 'HTTP Status Code for {#HOSTNAME}'
+              type: DEPENDENT
+              key: 'http.redirect.status[{#HOSTNAME}]'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'HTTP/\d(\.\d)?\s+(\d+)'
+                    - \2
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              master_item:
+                key: 'http.redirect.check[{#HOSTNAME}]'
+              tags:
+                - tag: component
+                  value: http-redirect
+              trigger_prototypes:
+                - uuid: 2cc6447512964898a14537631dd793ce
+                  expression: |
+                    last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>301 and
+                    last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>302 and
+                    last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>303 and
+                    last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>0
+                  name: 'HTTP does not redirect to HTTPS for {#HOSTNAME}'
+                  priority: WARNING
+                  description: 'HTTP request to {#HOSTNAME} returned status code {ITEM.LASTVALUE1}, which is not a redirect (301, 302, or 303).'
+                  dependencies:
+                    - name: 'HTTP redirect check failed for {#HOSTNAME}'
+                      expression: 'last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])=0'
+                  tags:
+                    - tag: component
+                      value: http-redirect
+                    - tag: scope
+                      value: security
+                - uuid: 9c2f0e2e34214a0d8103062f3c85b15e
+                  expression: 'last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])=0'
+                  name: 'HTTP redirect check failed for {#HOSTNAME}'
+                  priority: HIGH
+                  description: 'HTTP request to {#HOSTNAME} did not receive any response or connection failed.'
+                  tags:
+                    - tag: component
+                      value: http-redirect
+                    - tag: scope
+                      value: availability
+          trigger_prototypes:
+            - uuid: e61908982610413b9da08fb00539456d
+              expression: |
+                last(/HTTP to HTTPS Redirect Check/http.redirect.is_https[{#HOSTNAME}])=0 and
+                last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>0
+              name: 'HTTP redirect target is not HTTPS for {#HOSTNAME}'
+              priority: AVERAGE
+              description: 'HTTP redirect for {#HOSTNAME} does not point to HTTPS URL. Location: {ITEM.LASTVALUE1}'
+              dependencies:
+                - name: 'HTTP does not redirect to HTTPS for {#HOSTNAME}'
+                  expression: |
+                    last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>301 and
+                    last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>302 and
+                    last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>303 and
+                    last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>0
+                - name: 'HTTP redirect check failed for {#HOSTNAME}'
+                  expression: 'last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])=0'
+              tags:
+                - tag: component
+                  value: http-redirect
+                - tag: scope
+                  value: security
+          master_item:
+            key: http.redirect.hostnames
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var hostnames = value.split(',').map(function(h) { return h.trim(); }).filter(function(h) { return h.length > 0; });
+                  var result = [];
+                  for (var i = 0; i < hostnames.length; i++) {
+                    result.push({
+                      "{#HOSTNAME}": hostnames[i]
+                    });
+                  }
+                  return JSON.stringify(result);
+      tags:
+        - tag: component
+          value: http-redirect
+      macros:
+        - macro: '{$HTTP_REDIRECT_ALIASES}'
+          description: 'Comma-separated list of hostnames/aliases to check for HTTP to HTTPS redirect. Example: example.com,www.example.com,app.example.com.'
+        - macro: '{$HTTP_REDIRECT_TIMEOUT}'
+          value: '10'
+          description: 'Timeout for HTTP redirect check in seconds'
