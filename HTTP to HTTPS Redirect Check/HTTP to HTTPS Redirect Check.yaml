@@ -10,7 +10,7 @@ zabbix_export:
       description: 'The template tests whether the target host redirects HTTP to HTTPS for aliases specified in the user macro {$HTTP_REDIRECT_ALIASES}. Aliases are usually DNS names, but they can also be IP addresses.'
       vendor:
         name: lpavlicek
-        version: 7.4-1 
+        version: 7.4-2
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -22,6 +22,31 @@ zabbix_export:
           value_type: TEXT
           params: 'concat("{$HTTP_REDIRECT_ALIASES}","")'
           description: 'Returns the comma-separated list of hostnames defined in the {$HTTP_REDIRECT_ALIASES} macro. This value serves as the data source for LLD.'
+          tags:
+            - tag: component
+              value: http-redirect
+        - uuid: 5414b2284d85492d84be1b814e093b57
+          name: 'HTTP Redirect overall status'
+          type: CALCULATED
+          key: http.redirect.overall.status
+          delay: 5m
+          params: |
+            1 + 
+            between(
+             (  item_count(//http.redirect.is_https[*])
+                   - sum(last_foreach(//http.redirect.is_https[*]))
+             ), 1,999)
+          description: |
+            Aggregated status of HTTP→HTTPS redirection across all aliases.
+            0 = no aliases, 1 = all redirect, 2 = some missing redirection.
+          valuemap:
+            name: 'HTTP Redirect overall status'
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '-1'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
           tags:
             - tag: component
               value: http-redirect
@@ -173,3 +198,14 @@ zabbix_export:
         - macro: '{$HTTP_REDIRECT_TIMEOUT}'
           value: '10'
           description: 'Timeout for HTTP redirect check in seconds'
+      valuemaps:
+        - uuid: 30b9a1d7dcf74c43b74f545434394b60
+          name: 'HTTP Redirect overall status'
+          mappings:
+            - value: '0'
+              newvalue: 'No http monitored'
+            - value: '1'
+              newvalue: 'All redirects to HTTPS'
+            - type: GREATER_OR_EQUAL
+              value: '2'
+              newvalue: 'Some redirects missing'

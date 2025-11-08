@@ -79,3 +79,15 @@ Po přiřazení šablony musíte definovat, které hostnames se mají kontrolova
 4.  **Generování:** Pro každý prvek v JSON poli vytvoří Zabbix sadu monitorovacích položek a triggerů.
 
 *(Tento proces zajišťuje, že LLD je robustní, i když uživatel zadá seznam s nadbytečnými mezerami nebo čárkami.)*
+
+## 📥 Celkový stav
+
+Zjišťuje se celkový stav přesměrování na HTTPS za všechny aliasy uvedené v makru, výsledkem jsou následující hodnoty (value map):
+0. **No HTTP Monitored** - není uveden žádný alias v makru, nejsou dependend items
+1. **All redirects to HTTPS** - pro všechny zadané aliasy je přesměrování na https
+2. **Some redirects missing** - pro některý alias chybí přesměrování na https
+
+## 💡 Zajímavé obraty v šabloně
+
+1. Řešení neexistence uživatelského makra {$HTTP_REDIRECT_ALIASES} pro LLD. LLD zpracovává výstup z master item. Pokud makro není definováno, tak se nic nevygenerovalo a vznikala chyba. Řešením je formule `concat("{$HTTP_REDIRECT_ALIASES}","")` v Calculated item, která při neexistenci makra vrátí prázdný řetězec.
+2. Formule přes více LLD items fungují, pouze když existuje aspoň jedna dependent item. Pokud žádná LLD item neexistuje, tak vzniká chyba. Je potřeba nastavit `Preprocessing`, konkrétně `Check for not suported value` s parametrem `any error`. 
