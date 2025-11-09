@@ -9,7 +9,7 @@ zabbix_export:
       name: 'TLS sslscan Monitoring'
       vendor:
         name: lpavlicek
-        version: 7.4
+        version: '7.4-1'
       description: |
         Template for monitoring SSL/TLS configurations using sslscan tool.
               
