@@ -1,0 +1,712 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 12ccebd48fe04cb5b4d1a9729f13f3ab
+      template: 'TLS sslscan Monitoring'
+      name: 'TLS sslscan Monitoring'
+      vendor:
+        name: lpavlicek
+        version: 7.4
+      description: |
+        Template for monitoring SSL/TLS configurations using sslscan tool.
+              
+        Features:
+              - Automatic discovery of multiple SSL/TLS endpoints
+              - Support for HTTPS and StartTLS protocols (SMTP, PostgreSQL, IMAP, etc.)
+              - Detection of insecure TLS versions (TLS 1.0, TLS 1.1)
+              - Certificate validation (expiration, self-signed, validity period)
+              - Configurable certificate expiration warnings
+              - Detailed error reporting for connection failures
+              
+        Requirements:
+              - sslscan installed on Zabbix server/proxy
+              - External script: /usr/lib/zabbix/externalscripts/sslscan_check.sh
+              - Network access from Zabbix server/proxy to monitored endpoints
+              
+        Configuration:
+              1. Assign template to host
+              2. Set {$SSLSCAN.TARGETS} macro with comma-separated host:port list
+              3. Optionally set {$SSLSCAN.STARTTLS} for non-HTTPS protocols
+              4. Adjust {$SSLSCAN.CERT.EXPIRATION.WARN} if needed (default: 7 days)
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: c6516430a40941319214ee435bb40bc5
+          name: 'TLS sslscan Hostnames List'
+          type: CALCULATED
+          key: sslscan.hostnames
+          delay: 1h
+          value_type: TEXT
+          params: 'concat("{$SSLSCAN.TARGETS}","")'
+          description: |
+            Master item that provides the list of targets from {$SSLSCAN.TARGETS} macro.
+            
+            This item serves as the data source for the Low-Level Discovery rule.
+            
+            Expected format: comma-separated list of host:port pairs
+            Example: www.example.cz:443,db.example.cz:5432,mail.example.cz:25
+            
+            The discovery rule will automatically create monitoring items for each target.
+          tags:
+            - tag: component
+              value: sslscan
+        - uuid: 6ee70a884ed2447bbd7e87f9641d6f8e
+          name: 'TLS sslscan Overall Severity'
+          type: CALCULATED
+          key: sslscan.overall_severity
+          delay: 2m
+          params: 'max(last_foreach(//sslscan.target_severity[*]))'
+          description: |
+            Global severity indicator for all monitored SSL/TLS endpoints.
+              
+            This calculated item returns the MAXIMUM severity level across ALL targets configured in {$SSLSCAN.TARGETS} macro.
+            
+            Provides a single metric that represents the worst SSL/TLS security status across your entire monitored infrastructure.
+          valuemap:
+            name: overall.severity
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '-1'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '9'
+          tags:
+            - tag: component
+              value: sslscan
+      discovery_rules:
+        - uuid: 4bd7f59a3d7c472baebaf890b27fdc40
+          name: 'TLS sslscan Endpoint Discovery'
+          type: DEPENDENT
+          key: sslscan.discovery
+          description: |
+            Automatically discovers SSL/TLS endpoints from {$SSLSCAN.TARGETS} macro.
+            
+            For each discovered target, creates:
+            - 1 master item (sslscan execution)
+            - 10 dependent items (TLS versions, certificate checks, errors)
+            - 7 triggers (security warnings and certificate expiration alerts)
+            
+            Discovery process:
+                  1. Reads {$SSLSCAN.TARGETS} macro (comma-separated host:port list)
+                  2. Reads {$SSLSCAN.STARTTLS} macro (optional StartTLS parameters)
+                  3. Creates {#TARGET} and {#STARTTLS} macros for each endpoint
+                  4. Generates monitoring items using these macros
+            
+            Rediscovery interval: 1 hour (items are kept for 30 days after target removal)
+          item_prototypes:
+            - uuid: 92f2b59926ae49719e983196a873c979
+              name: 'TLS sslscan Certificate Days Until Expiration for {#TARGET}'
+              type: DEPENDENT
+              key: 'sslscan.cert.daysuntilexpiration[{#TARGET}]'
+              value_type: FLOAT
+              description: |
+                Calculated number of days remaining until certificate expiration.
+                    
+                Values:
+                - Positive number = Days until expiration
+                - 0 = Expires today
+                - Negative number = Days since expiration
+                - 9999 = No date found in XML (scan error)
+                - 9998-9996 = Parsing error codes
+                
+                This item is used by the "Certificate expiring soon" trigger.
+                Warning threshold is controlled by {$SSLSCAN.CERT.EXPIRATION.WARN} macro (default: 7 days).
+              preprocessing:
+                - type: XMLPATH
+                  parameters:
+                    - /document/ssltest/certificates/certificate/not-valid-after/text()
+                  error_handler: DISCARD_VALUE
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      // Parse date format: "Dec 13 03:48:41 2025 GMT"
+                        var s = value.trim();
+                      var _output_ = 9999;
+                      if (!s) {
+                        // no date found -> return empty or a sentinel
+                        // vracíme large positive (nebude vyhodnoceno) nebo NaN -> raději prázdný
+                        _output = 9998;
+                      } else {
+                        // vstup formát: "Dec 13 03:48:41 2025 GMT"
+                        // rozdělíme a převedeme na Date objekt v UTC
+                        var parts = s.split(' ');
+                        // možné formáty: [Mon] [DD] [HH:MM:SS] [YYYY] [GMT]
+                        // Např: ["Dec","13","03:48:41","2025","GMT"]
+                        if (parts.length < 4) {
+                          _output_ = 9997;
+                        } else {
+                          var months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+                          var m = months[parts[0]];
+                          var day = parseInt(parts[1],10);
+                          var timeparts = parts[2].split(':');
+                          var year = parseInt(parts[3],10);
+                          if (isNaN(m) || isNaN(day) || timeparts.length !== 3 || isNaN(year)) {
+                            _output_ = 9996;
+                          } else {
+                            var hour = parseInt(timeparts[0],10);
+                            var minute = parseInt(timeparts[1],10);
+                            var second = parseInt(timeparts[2],10);
+                            // vytvoříme UTC timestamp
+                            var ts_ms = Date.UTC(year, m, day, hour, minute, second);
+                            var now_ms = Date.now();
+                            var diff_days = (ts_ms - now_ms) / (1000*60*60*24);
+                            // pokud chceme includovat dnešní den jako 0/1, uprav podle potřeby
+                            _output_ = Number(diff_days.toFixed(1));
+                          }
+                        }
+                      }
+                      return _output_;
+              master_item:
+                key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
+              tags:
+                - tag: component
+                  value: sslscan
+            - uuid: 1dfc04e7fd9b4d46bbe85c6168355e1e
+              name: 'TLS sslscan Certificate EC Curve for {#TARGET}'
+              type: DEPENDENT
+              key: 'sslscan.cert.eccurve[{#TARGET}]'
+              value_type: TEXT
+              description: |
+                Extracts the elliptic curve name for EC certificates on {#TARGET}.
+                    
+                Common secure curves:
+                - prime256v1 (P-256, secp256r1) - 128-bit security, widely supported
+                - secp384r1 (P-384) - 192-bit security, high security
+                - secp521r1 (P-521) - 256-bit security, maximum security
+                
+                Avoid deprecated curves:
+                - secp256k1 (used in Bitcoin, not recommended for TLS)
+                - Curves smaller than 256 bits
+                
+                This field is empty for non-EC certificates (RSA, DSA).
+              preprocessing:
+                - type: XMLPATH
+                  parameters:
+                    - string(/document/ssltest/certificates/certificate/pk/@curve_name)
+                  error_handler: CUSTOM_VALUE
+              master_item:
+                key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
+              tags:
+                - tag: component
+                  value: sslscan
+            - uuid: 0fb690c6e45c4ff9a8e276bdefec0f4e
+              name: 'TLS sslscan Certificate Expiration Date for {#TARGET}'
+              type: DEPENDENT
+              key: 'sslscan.cert.expiration[{#TARGET}]'
+              value_type: TEXT
+              description: |
+                The expiration date of the certificate in format "Mon DD HH:MM:SS YYYY GMT".
+                    
+                Example: "Dec 13 03:48:41 2025 GMT"
+                    
+                This is the raw date extracted from the certificate's "Not Valid After" field.
+              preprocessing:
+                - type: XMLPATH
+                  parameters:
+                    - /document/ssltest/certificates/certificate/not-valid-after/text()
+                  error_handler: DISCARD_VALUE
+              master_item:
+                key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
+              tags:
+                - tag: component
+                  value: sslscan
+            - uuid: 5e71ce36aa674b41a790a1449f6f0c18
+              name: 'TLS sslscan Certificate Expired for {#TARGET}'
+              type: DEPENDENT
+              key: 'sslscan.cert.expired[{#TARGET}]'
+              description: |
+                Checks if the certificate on {#TARGET} has expired.
+                
+                Value mapping:
+                - 1 = Certificate has expired (CRITICAL - blocks secure connections)
+                - 0 = Certificate is still valid
+                
+                Expired certificates will cause browsers and clients to reject connections.
+              valuemap:
+                name: sslscan.certstatus
+              preprocessing:
+                - type: XMLPATH
+                  parameters:
+                    - /document/ssltest/certificates/certificate/expired/text()
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: 'false'
+                - type: JAVASCRIPT
+                  parameters:
+                    - 'return value.trim() === ''true'' ? 1 : 0;'
+              master_item:
+                key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
+              tags:
+                - tag: component
+                  value: sslscan
+              trigger_prototypes:
+                - uuid: a73f3c2c0f354a56a329e71934c8d691
+                  expression: 'last(/TLS sslscan Monitoring/sslscan.cert.expired[{#TARGET}])=1'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/TLS sslscan Monitoring/sslscan.cert.expired[{#TARGET}])=0'
+                  name: 'Certificate expired on {#TARGET}'
+                  priority: HIGH
+                  description: 'The certificate on {#TARGET} has expired and is no longer valid.'
+                  tags:
+                    - tag: component
+                      value: sslscan
+            - uuid: a28784f6219642508730004b1413101b
+              name: 'TLS sslscan Certificate Key Bits for {#TARGET}'
+              type: DEPENDENT
+              key: 'sslscan.cert.keybits[{#TARGET}]'
+              description: |
+                Extracts the key size in bits from the certificate on {#TARGET}.
+                
+                Minimum recommended key sizes:
+                - RSA: 3072 bits (2048 bits deprecated for new certificates after 2030)
+                - EC: 256 bits (equivalent to RSA 3072 bits)
+                
+                Note: For EC keys, this represents the security level, not the actual key length. For example, EC P-256 (prime256v1) provides ~128 bits of security.
+              preprocessing:
+                - type: XMLPATH
+                  parameters:
+                    - string(/document/ssltest/certificates/certificate/pk/@bits)
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var bits = value.trim();
+                      if (bits === '' || bits === '0') {
+                        return 0;
+                      }
+                      var num = parseInt(bits, 10);
+                      return isNaN(num) ? 0 : num;
+              master_item:
+                key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
+              tags:
+                - tag: component
+                  value: sslscan
+            - uuid: 20c37950a18e4a1aa49b84371742a720
+              name: 'TLS sslscan Certificate Key Type for {#TARGET}'
+              type: DEPENDENT
+              key: 'sslscan.cert.keytype[{#TARGET}]'
+              value_type: TEXT
+              description: |
+                Extracts the public key type from the certificate on {#TARGET}.
+                
+                Common values:
+                    - EC = Elliptic Curve (modern, efficient, secure)
+                    - RSA = RSA algorithm (traditional, widely supported)
+                    - DSA = Digital Signature Algorithm (deprecated, rare)
+                
+                EC keys are preferred for modern deployments due to better performance with equivalent security levels.
+              preprocessing:
+                - type: XMLPATH
+                  parameters:
+                    - string(/document/ssltest/certificates/certificate/pk/@type)
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: UNKNOWN
+              master_item:
+                key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
+              tags:
+                - tag: component
+                  value: sslscan
+            - uuid: e4489120901940d481877368412b68b5
+              name: 'TLS sslscan Certificate Not Yet Valid for {#TARGET}'
+              type: DEPENDENT
+              key: 'sslscan.cert.notyetvalid[{#TARGET}]'
+              description: |
+                Checks if the certificate's validity period has started.
+                
+                Value mapping:
+                - 1 = Certificate is not yet valid (validity period hasn't started)
+                - 0 = Certificate validity period has started
+                
+                This usually indicates a clock synchronization issue or premature certificate deployment.
+              valuemap:
+                name: sslscan.certstatus
+              preprocessing:
+                - type: XMLPATH
+                  parameters:
+                    - /document/ssltest/certificates/certificate/not-yet-valid/text()
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: 'false'
+                - type: JAVASCRIPT
+                  parameters:
+                    - 'return value.trim() === ''true'' ? 1 : 0;'
+              master_item:
+                key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
+              tags:
+                - tag: component
+                  value: sslscan
+              trigger_prototypes:
+                - uuid: 23412404d3414e7bb0443957013efa1e
+                  expression: 'last(/TLS sslscan Monitoring/sslscan.cert.notyetvalid[{#TARGET}])=1'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/TLS sslscan Monitoring/sslscan.cert.notyetvalid[{#TARGET}])=0'
+                  name: 'Certificate not yet valid on {#TARGET}'
+                  priority: HIGH
+                  description: 'The certificate on {#TARGET} is not yet valid. The validity period has not started yet.'
+                  tags:
+                    - tag: component
+                      value: sslscan
+            - uuid: 5ac2ffd5753b45ed818240f7267c595e
+              name: 'TLS sslscan Certificate Self-Signed for {#TARGET}'
+              type: DEPENDENT
+              key: 'sslscan.cert.selfsigned[{#TARGET}]'
+              description: |
+                Detects if the certificate on {#TARGET} is self-signed.
+                
+                Value mapping:
+                - 1 = Certificate is self-signed (not trusted by browsers/systems)
+                - 0 = Certificate is issued by a trusted Certificate Authority
+                
+                Self-signed certificates should only be used for testing/development environments.
+                Production systems should use certificates from trusted CAs (Let's Encrypt, DigiCert, etc.).
+              valuemap:
+                name: sslscan.certstatus
+              preprocessing:
+                - type: XMLPATH
+                  parameters:
+                    - /document/ssltest/certificates/certificate/self-signed/text()
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: 'false'
+                - type: JAVASCRIPT
+                  parameters:
+                    - 'return value.trim() === ''true'' ? 1 : 0;'
+              master_item:
+                key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
+              tags:
+                - tag: component
+                  value: sslscan
+              trigger_prototypes:
+                - uuid: 7c550c2cbc8c47acb51e96a570f5f292
+                  expression: 'last(/TLS sslscan Monitoring/sslscan.cert.selfsigned[{#TARGET}])=1'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/TLS sslscan Monitoring/sslscan.cert.selfsigned[{#TARGET}])=0'
+                  name: 'Self-signed certificate detected on {#TARGET}'
+                  priority: WARNING
+                  description: 'The certificate on {#TARGET} is self-signed and not issued by a trusted Certificate Authority.'
+                  tags:
+                    - tag: component
+                      value: sslscan
+            - uuid: 1ac461f93b4749b29dc67885eecc97e4
+              name: 'TLS sslscan Error for {#TARGET}'
+              type: DEPENDENT
+              key: 'sslscan.error[{#TARGET}]'
+              value_type: TEXT
+              description: |
+                Extracts error messages from sslscan XML output.
+                    
+                Common errors include:
+                    - "Could not resolve hostname" - DNS resolution failure
+                    - "Connection timeout" - Target unreachable or port closed
+                    - "SSL/TLS handshake failed" - Protocol negotiation failure
+                    
+                An empty value indicates successful scan with no errors.
+              preprocessing:
+                - type: XMLPATH
+                  parameters:
+                    - string(/document/error/text())
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: ''''''
+              master_item:
+                key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
+              tags:
+                - tag: component
+                  value: sslscan
+              trigger_prototypes:
+                - uuid: 13a4dd2454ba4479a2cc8fc33c3ea47e
+                  expression: 'length(last(/TLS sslscan Monitoring/sslscan.error[{#TARGET}]))>0'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'length(last(/TLS sslscan Monitoring/sslscan.error[{#TARGET}]))=0'
+                  name: 'SSL Scan error for {#TARGET}: {ITEM.LASTVALUE1}'
+                  priority: WARNING
+                  description: |
+                    SSLScan encountered an error while scanning {#TARGET}.
+                    Error message: {ITEM.LASTVALUE1}
+                  tags:
+                    - tag: component
+                      value: sslscan
+            - uuid: 46cb9dc7f90f4a4f93d6a8615ddaa3cb
+              name: 'TLS sslscan Target Severity for {#TARGET}'
+              type: CALCULATED
+              key: 'sslscan.target_severity[{#TARGET}]'
+              params: 'max(last(//sslscan.cert.selfsigned[{#TARGET}])*2, last(//sslscan.cert.notyetvalid[{#TARGET}])*2, last(//sslscan.cert.expired[{#TARGET}])*4, last(//sslscan.tls10.enabled[{#TARGET}])*2, last(//sslscan.tls11.enabled[{#TARGET}])*2, (last(//sslscan.cert.daysuntilexpiration[{#TARGET}]) < {$SSLSCAN.CERT.EXPIRATION.WARN})*2, (length(last(//sslscan.error[{#TARGET}]))>0)*4, (last(//sslscan.cert.keytype[{#TARGET}])="RSA" and last(//sslscan.cert.keybits[{#TARGET}])=2048)*1, 0)'
+              description: |
+                Calculated overall severity level for SSL/TLS configuration on {#TARGET}.
+                
+                This item aggregates all security issues detected on the target and returns the highest severity level found.
+              valuemap:
+                name: overall.severity
+              tags:
+                - tag: component
+                  value: sslscan
+            - uuid: fc0231608a99466984cdee75b187face
+              name: 'TLS sslscan TLS 1.0 Enabled for {#TARGET}'
+              type: DEPENDENT
+              key: 'sslscan.tls10.enabled[{#TARGET}]'
+              description: |
+                Indicates whether TLS 1.0 protocol is enabled on {#TARGET}.
+                
+                Value mapping:
+                    - 1 = TLS 1.0 is enabled (INSECURE - should trigger warning)
+                    - 0 = TLS 1.0 is disabled (secure configuration)
+                
+                TLS 1.0 was deprecated in 2021 (RFC 8996) due to security vulnerabilities. Modern systems should use TLS 1.2 or TLS 1.3 only.
+              valuemap:
+                name: sslscan.tlsversion
+              preprocessing:
+                - type: XMLPATH
+                  parameters:
+                    - 'string(/document/ssltest/protocol[@type=''tls'' and @version=''1.0'']/@enabled)'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: JAVASCRIPT
+                  parameters:
+                    - 'return value.trim() === ''1'' ? 1 : 0;'
+              master_item:
+                key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
+              tags:
+                - tag: component
+                  value: sslscan
+              trigger_prototypes:
+                - uuid: 8fafd50a64b6479fb33c34a8ad292918
+                  expression: 'last(/TLS sslscan Monitoring/sslscan.tls10.enabled[{#TARGET}])=1'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/TLS sslscan Monitoring/sslscan.tls10.enabled[{#TARGET}])=0'
+                  name: 'TLS 1.0 is enabled on {#TARGET}'
+                  priority: WARNING
+                  description: 'TLS 1.0 protocol is enabled on {#TARGET}. This is considered insecure and should be disabled.'
+                  manual_close: 'YES'
+                  tags:
+                    - tag: component
+                      value: sslscan
+            - uuid: 17a9c54a610b4b70b0e652cbdee9f2b0
+              name: 'TLS sslscan TLS 1.1 Enabled for {#TARGET}'
+              type: DEPENDENT
+              key: 'sslscan.tls11.enabled[{#TARGET}]'
+              description: |
+                Indicates whether TLS 1.1 protocol is enabled on {#TARGET}.
+                
+                Value mapping:
+                - 1 = TLS 1.1 is enabled (INSECURE - should trigger warning)
+                - 0 = TLS 1.1 is disabled (secure configuration)
+                
+                TLS 1.1 was deprecated in 2021 (RFC 8996) due to security vulnerabilities. Modern systems should use TLS 1.2 or TLS 1.3 only.
+              valuemap:
+                name: sslscan.tlsversion
+              preprocessing:
+                - type: XMLPATH
+                  parameters:
+                    - 'string(/document/ssltest/protocol[@type=''tls'' and @version=''1.1'']/@enabled)'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: JAVASCRIPT
+                  parameters:
+                    - 'return value.trim() === ''1'' ? 1 : 0;'
+              master_item:
+                key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
+              tags:
+                - tag: component
+                  value: sslscan
+              trigger_prototypes:
+                - uuid: d4d649bb3fcb4c0f887c53056164668c
+                  expression: 'last(/TLS sslscan Monitoring/sslscan.tls11.enabled[{#TARGET}])=1'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/TLS sslscan Monitoring/sslscan.tls11.enabled[{#TARGET}])=0'
+                  name: 'TLS 1.1 is enabled on {#TARGET}'
+                  priority: WARNING
+                  description: 'TLS 1.1 protocol is enabled on {#TARGET}. This is considered insecure and should be disabled.'
+                  manual_close: 'YES'
+                  tags:
+                    - tag: component
+                      value: sslscan
+            - uuid: 60d415b923e84216ab79ad602db61a57
+              name: 'TLS sslscan TLS 1.2 Enabled for {#TARGET}'
+              type: DEPENDENT
+              key: 'sslscan.tls12.enabled[{#TARGET}]'
+              description: |
+                ndicates whether TLS 1.2 protocol is enabled on {#TARGET}.
+                
+                Value mapping:
+                - 1 = TLS 1.2 is enabled (secure, widely supported)
+                - 0 = TLS 1.2 is disabled
+                
+                TLS 1.2 is considered secure and is the minimum recommended version for most applications.
+              valuemap:
+                name: sslscan.tlsversion
+              preprocessing:
+                - type: XMLPATH
+                  parameters:
+                    - 'string(/document/ssltest/protocol[@type=''tls'' and @version=''1.2'']/@enabled)'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: JAVASCRIPT
+                  parameters:
+                    - 'return value.trim() === ''1'' ? 1 : 0;'
+              master_item:
+                key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
+              tags:
+                - tag: component
+                  value: sslscan
+            - uuid: f210bc190b0f4394b62cfee965971689
+              name: 'TLS sslscan TLS 1.3 Enabled for {#TARGET}'
+              type: DEPENDENT
+              key: 'sslscan.tls13.enabled[{#TARGET}]'
+              description: |
+                Indicates whether TLS 1.3 protocol is enabled on {#TARGET}.
+                
+                Value mapping:
+                - 1 = TLS 1.3 is enabled (most secure, recommended)
+                - 0 = TLS 1.3 is disabled
+                
+                TLS 1.3 is the latest version with improved security and performance.
+              valuemap:
+                name: sslscan.tlsversion
+              preprocessing:
+                - type: XMLPATH
+                  parameters:
+                    - 'string(/document/ssltest/protocol[@type=''tls'' and @version=''1.3'']/@enabled)'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: JAVASCRIPT
+                  parameters:
+                    - 'return value.trim() === ''1'' ? 1 : 0;'
+              master_item:
+                key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
+              tags:
+                - tag: component
+                  value: sslscan
+            - uuid: 257a2ae5c5134ee1b4605978f34c3e88
+              name: 'TLS sslscan Check for {#TARGET}'
+              type: EXTERNAL
+              key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
+              delay: 5m
+              value_type: TEXT
+              description: |
+                Master item that executes sslscan against {#TARGET} and returns XML output.
+                This item serves as the data source for all dependent SSL/TLS monitoring items.
+                    
+                Command executed:
+                sslscan --xml=- --timeout=2 --connection-timeout=2 --no-renegotiation --no-heartbleed --no-groups --no-compression --no-ciphersuites --tlsall --no-cipher-details {#STARTTLS} {#TARGET}
+              tags:
+                - tag: component
+                  value: sslscan
+          trigger_prototypes:
+            - uuid: 890bb6fe3c03435b9d38b4c222d5d928
+              expression: |
+                last(/TLS sslscan Monitoring/sslscan.cert.daysuntilexpiration[{#TARGET}])<{$SSLSCAN.CERT.EXPIRATION.WARN} and last(/TLS sslscan Monitoring/sslscan.cert.daysuntilexpiration[{#TARGET}])>=0
+                and length(last(/TLS sslscan Monitoring/sslscan.cert.expiration[{#TARGET}]))>0
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: 'last(/TLS sslscan Monitoring/sslscan.cert.daysuntilexpiration[{#TARGET}])>{$SSLSCAN.CERT.EXPIRATION.WARN}'
+              name: 'Certificate on {#TARGET} expires in {ITEM.LASTVALUE1} days'
+              priority: AVERAGE
+              description: |
+                The certificate on {#TARGET} will expire in {ITEM.LASTVALUE1} days.
+                Warning threshold: {$SSLSCAN.CERT.EXPIRATION.WARN} days.
+                Action required:
+                 - Renew the certificate before {ITEM.LASTVALUE3}.
+              dependencies:
+                - name: 'Certificate expired on {#TARGET}'
+                  expression: 'last(/TLS sslscan Monitoring/sslscan.cert.expired[{#TARGET}])=1'
+                  recovery_expression: 'last(/TLS sslscan Monitoring/sslscan.cert.expired[{#TARGET}])=0'
+              tags:
+                - tag: component
+                  value: sslscan
+            - uuid: e7e3c210be214475808f02567a5ca9ec
+              expression: |
+                (last(/TLS sslscan Monitoring/sslscan.cert.keytype[{#TARGET}])="RSA" 
+                      and last(/TLS sslscan Monitoring/sslscan.cert.keybits[{#TARGET}])<3072 
+                      and last(/TLS sslscan Monitoring/sslscan.cert.keybits[{#TARGET}])>0)
+                      or 
+                      (last(/TLS sslscan Monitoring/sslscan.cert.keytype[{#TARGET}])<>"RSA" 
+                      and last(/TLS sslscan Monitoring/sslscan.cert.keytype[{#TARGET}])<>"EC" 
+                      and last(/TLS sslscan Monitoring/sslscan.cert.keytype[{#TARGET}])<>"UNKNOWN")
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: |
+                (last(/TLS sslscan Monitoring/sslscan.cert.keytype[{#TARGET}])="RSA" 
+                and last(/TLS sslscan Monitoring/sslscan.cert.keybits[{#TARGET}])>=3072)
+                
+                or 
+                
+                last(/TLS sslscan Monitoring/sslscan.cert.keytype[{#TARGET}])="EC"
+              name: 'Weak cryptographic key on {#TARGET}'
+              priority: INFO
+              description: |
+                Weak Cryptographic Key Detected
+                The certificate on {#TARGET} uses a cryptographic key that does not meet current security standards.
+                Certificate Key Information: {ITEM.LASTVALUE1} {ITEM.LASTVALUE2} bits
+                
+                SECURE configurations:
+                • EC keys (any standard curve: prime256v1, secp384r1)
+                • RSA keys: 3072 bits or 4096 bits
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: sslscan
+          master_item:
+            key: sslscan.hostnames
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var targets = value.split(',').map(function(h) { return h.trim(); }).filter(function(h) { return h.length > 0; });
+                  var starttls = '{$SSLSCAN.STARTTLS}'.split(',');
+                  var result = [];
+                  for (var i = 0; i < targets.length; i++) {
+                    var starttls_param = '';
+                    if (i < starttls.length && starttls[i].trim()) {
+                       starttls_param = starttls[i].trim();
+                    }
+                    result.push({
+                      "{#TARGET}": targets[i],
+                      "{#STARTTLS}": starttls_param
+                    });
+                  }
+                  return JSON.stringify(result);
+      tags:
+        - tag: component
+          value: sslscan
+      macros:
+        - macro: '{$SSLSCAN.CERT.EXPIRATION.WARN}'
+          value: '7'
+          description: 'Number of days before certificate expiration to trigger warning.'
+        - macro: '{$SSLSCAN.STARTTLS}'
+          description: 'Optional comma-separated list of starttls parameters corresponding to targets (e.g., ,--starttls-psql,--starttls-smtp). Empty value for standard HTTPS.'
+        - macro: '{$SSLSCAN.TARGETS}'
+          description: 'Comma-separated list of targets in format host:port (e.g., www.example.cz:443,db.example.cz:5432)'
+      valuemaps:
+        - uuid: 9cdd67faa1c3412ea3281c64d952fd1b
+          name: overall.severity
+          mappings:
+            - value: '0'
+              newvalue: good
+            - value: '1'
+              newvalue: info_severity
+            - value: '2'
+              newvalue: warning
+            - value: '3'
+              newvalue: average
+            - value: '4'
+              newvalue: high
+            - value: '5'
+              newvalue: disaster
+            - value: '9'
+              newvalue: no_test
+        - uuid: 12079ea5e4af4caf90d664fe0ca824ec
+          name: sslscan.certstatus
+          mappings:
+            - value: '0'
+              newvalue: 'false'
+            - value: '1'
+              newvalue: 'true'
+            - value: '2'
+              newvalue: error
+        - uuid: 20dde5262c36496d989ade79785e6cb4
+          name: sslscan.tlsversion
+          mappings:
+            - value: '1'
+              newvalue: 'yes'
+            - value: '0'
+              newvalue: 'no'
+            - value: '2'
+              newvalue: error
