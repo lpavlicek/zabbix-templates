@@ -10,7 +10,7 @@ zabbix_export:
       description: 'The template tests whether the target host redirects HTTP to HTTPS for aliases specified in the user macro {$HTTP_REDIRECT_ALIASES}. Aliases are usually DNS names, but they can also be IP addresses.'
       vendor:
         name: lpavlicek
-        version: 7.4-2
+        version: 7.4-3
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -62,6 +62,11 @@ zabbix_export:
               key: 'http.redirect.check[{#HOSTNAME}]'
               delay: 5m
               value_type: TEXT
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
               timeout: '{$HTTP_REDIRECT_TIMEOUT}'
               url: 'http://{#HOSTNAME}'
               status_codes: 200-599
