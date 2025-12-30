@@ -1,0 +1,742 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 19418c11d1b946548056bcacec199f48
+      template: 'HTTP headers'
+      name: 'HTTP headers'
+      description: |
+        Parsuje se makro  {$HTTP_HEADERS_TARGETS}
+        Příklady obsahu makra:
+        https://example.cz,https://admin.example.cz/adminer|method=GET|follow=0
+        https://admin.example.cz|method=GET|http2=0|hsts=1|referrer
+        https://static.example.cz|deprecated=1
+        
+        Možné parametry za URL:
+        method - metoda pro získání http hlaviček, GET či HEAD, default HEAD,
+        follow -  zda curl ve skriptu má následovat redirects, parametr pro skript
+        http2 - zda je požadována odpověď přes http2 (trigger)
+        hsts - zda je požadována hlavička HSTS (trigger),
+        frame - zda je požadována ochrana před frame clickjacking (trigger)
+        referrer - zda je požadována hlavička referrer-policy (trigger)
+        deprecated - zda reportovat deprecated hlavičky (triggery),
+        
+        URL, method a follow se předávají jako parametry externímu skriptu,
+        
+        Výstupem LLD je JSON s poli:
+        
+        {#URL} — cílové URL
+        {#METHOD} — HEAD / GET (výchozí HEAD), 
+        {#FOLLOW} — 1/0 (výchozí 1),
+        {#HTTP2} — 1/0 (výchozí 1),
+        {#HSTS} — 1/0 (výchozí 1),
+        {#FRAME} — 1/0 (výchozí 0),
+        {#REFERRER} — 1/0 (výchozí 0),
+        {#DEPRECATED} — 1/0 (výchozí 0),
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: b8acb82f74d148928a461fae4254a1ad
+          name: 'HTTP Headers - Strict Transport Security overal status'
+          type: CALCULATED
+          key: http.headers.hsts.overal.status
+          delay: 5m
+          params: |
+            0 =
+             (  item_count(//http.headers.hsts[*])
+                   - sum(last_foreach(//http.headers.hsts.status[*]))
+             )
+          description: |
+            Aggregated status of HTTP Strict Transport Security header across all URLs.
+            
+            0 - the header is missing or has an incorrect value on some of the tested URLs.
+            1 - All URLs have a valid header value.
+            2 - Error in macro.
+          valuemap:
+            name: 'HTTP Headers overal status'
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '-1'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '2'
+          tags:
+            - tag: component
+              value: http_headers
+        - uuid: c752c810c2f840cfbf27456cb8d7dfdc
+          name: 'HTTP Headers Targets List'
+          type: CALCULATED
+          key: http.headers.list
+          delay: 10m
+          value_type: TEXT
+          params: 'concat("{$HTTP_HEADERS_TARGETS}","")'
+          description: |
+            One or more URLs for which headers are to be tested.
+            URLs are set via the {$HTTP_HEADERS_TARGETS } macro.
+          tags:
+            - tag: component
+              value: http_headers
+        - uuid: e06d1880f16b4048818a49e80b1fe46f
+          name: 'HTTP Headers - Status Code overal status'
+          type: CALCULATED
+          key: http.headers.statuscode.overal
+          delay: 5m
+          params: |
+            0 = 
+             (  item_count(//http.headers.statuscode[*])
+                   - sum(last_foreach(//http.headers.statuscode.ok[*]))
+             )
+          description: |
+            Aggregated status of HTTP Status Code across all URLs.
+            
+            0 - Some tested URLs return an error status code.
+            1 - All tested URLs return a successful status code or redirection.
+            2 - Error in macro.
+          valuemap:
+            name: 'HTTP Headers overal status'
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '-1'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '2'
+          tags:
+            - tag: component
+              value: http_headers
+      discovery_rules:
+        - uuid: 1ac29f1285754611bdd8a31fa1f67785
+          name: 'HTTP Headers discovery (from {$HTTP_HEADERS_TARGETS})'
+          type: DEPENDENT
+          key: http.headers.discovery
+          description: 'Low-level discovery rule. Zpracovává obsah makra {$HTTP_HEADERS_TARGETS} a vytváří instanci pro každý cílový URL s parametry {#METHOD},{#FOLLOW},{#HTTP2},{#HSTS},{#FRAME},{#REFERRER},{#DEPRECATED}.'
+          item_prototypes:
+            - uuid: f92e2610ff0e4f05bdc2585fc51ee9a8
+              name: 'HTTP Headers - CSP frame-ancestors for {#URL}'
+              type: DEPENDENT
+              key: 'http.headers.csp.frameancestors[{#URL}]'
+              value_type: TEXT
+              description: |
+                Content frame-ancestors directive from Content-Security-Policy header.
+                
+                See https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-ancestors
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - '(?im)^content-security-policy\s*:\s*.*frame-ancestors\s+(.+?)(;|$)'
+                    - \1
+                  error_handler: CUSTOM_VALUE
+              master_item:
+                key: 'http_headers_curl.sh[{#URL},{#METHOD},{#FOLLOW}]'
+              tags:
+                - tag: component
+                  value: http_headers
+            - uuid: 47c6381c64e54a0cba617dd1a15ea437
+              name: 'HTTP Headers - Errors when retrieving {#URL}'
+              type: DEPENDENT
+              key: 'http.headers.error[{#URL}]'
+              value_type: TEXT
+              description: |
+                Report any curl-level error (non-zero exit) or stderr content.. Examples:
+                
+                SSL certificate problem: self-signed certificate
+                TLS connect error: wrong version number
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - '(?im)^ZBX-ERROR-DETAIL:\s*(.+)$'
+                    - \1
+                  error_handler: CUSTOM_VALUE
+              master_item:
+                key: 'http_headers_curl.sh[{#URL},{#METHOD},{#FOLLOW}]'
+              tags:
+                - tag: component
+                  value: http_headers
+              trigger_prototypes:
+                - uuid: 5723bef2489840c8b4e785ef93f86a61
+                  expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) > 0'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) = 0'
+                  name: 'Error retrieving HTTP headers on {#URL}'
+                  priority: HIGH
+                  description: 'curl-level error when retrieving {#URL}'
+                  tags:
+                    - tag: component
+                      value: http_headers
+            - uuid: 3e006badb7b04927a69998f57561389d
+              name: 'HTTP Headers - Feature policy for {#URL}'
+              type: DEPENDENT
+              key: 'http.headers.featurepolicy[{#URL}]'
+              description: |
+                Feature-Policy header content. Feature-Policy is deprecated, use header Permissions-Policy
+                see https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Permissions-Policy
+              valuemap:
+                name: 'HTTP Headers - exists header'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - '(?im)^feature-policy\s*:'
+                    - '1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              master_item:
+                key: 'http_headers_curl.sh[{#URL},{#METHOD},{#FOLLOW}]'
+              tags:
+                - tag: component
+                  value: http_headers
+              trigger_prototypes:
+                - uuid: f340b94cb8a9486c8e36b06e0c9a3160
+                  expression: 'last(/HTTP headers/http.headers.featurepolicy[{#URL}])=1 and ({#DEPRECATED}="1")'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/HTTP headers/http.headers.featurepolicy[{#URL}])=0 and ({#DEPRECATED}="0")'
+                  name: 'Feature policy is deprecated, but exists on {#URL}'
+                  priority: WARNING
+                  description: |
+                    Feature-Policy has been renamed to Permissions-Policy with slightly different format.
+                    
+                    see https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Permissions-Policy
+                  dependencies:
+                    - name: 'Error retrieving HTTP headers on {#URL}'
+                      expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) > 0'
+                      recovery_expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) = 0'
+                  tags:
+                    - tag: component
+                      value: http_headers
+            - uuid: 448da110e1b64d099d77b119f17350be
+              name: 'HTTP Headers - Strict Transport Security status for {#URL}'
+              type: DEPENDENT
+              key: 'http.headers.hsts.status[{#URL}]'
+              description: 'The item contains 1 if the Strict Transport Security header exists and the max_age value is greater than the value of the macro {$HTTP_HEADERS_HSTS_MIN_VALUE } ( {$HTTP_HEADERS_HSTS_MIN_VALUE} ).'
+              valuemap:
+                name: 'HTTP Headers - valid header'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      // Vstupní hodnota v Zabbix pre-processing je v proměnné 'value'.
+                      
+                      // Načtení hodnot makra – Zabbix do JS automaticky dosazuje skutečná čísla/řetězce.
+                      var minValue = Number('{$HTTP_HEADERS_HSTS_MIN_VALUE}');
+                      var hsts = String('{#HSTS}');  // zůstane jako string "1" nebo "0"
+                      
+                      // Logika:
+                      // Pokud je hodnota menší než minimální a zároveň je HSTS aktivní (1),
+                      // vracíme 0. Jinak 1.
+                      if (hsts === "1" && Number(value) < minValue) {
+                          return 0;
+                      } else {
+                          return 1;
+                      }
+              master_item:
+                key: 'http.headers.hsts[{#URL}]'
+              tags:
+                - tag: component
+                  value: http_headers
+            - uuid: b8814ccf2a764c00b2fc49d9c37716bf
+              name: 'HTTP Headers - Strict Transport Security max-age for {#URL}'
+              type: DEPENDENT
+              key: 'http.headers.hsts[{#URL}]'
+              description: |
+                max-age in seconds from header Strict Transport Security. Zero if header missing.
+                
+                See https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Strict_Transport_Security_Cheat_Sheet.html
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - '(?im)^strict-transport-security\s*:\s*.*max-age\s*=\s*(\d+).*$'
+                    - \1
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              master_item:
+                key: 'http_headers_curl.sh[{#URL},{#METHOD},{#FOLLOW}]'
+              tags:
+                - tag: component
+                  value: http_headers
+              trigger_prototypes:
+                - uuid: 2bd5da9f357a4867869e940be1bdd2a9
+                  expression: 'last(/HTTP headers/http.headers.hsts[{#URL}])<{$HTTP_HEADERS_HSTS_MIN_VALUE} and ({#HSTS}="1")'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/HTTP headers/http.headers.hsts[{#URL}])>={$HTTP_HEADERS_HSTS_MIN_VALUE} or ({#HSTS}="0")'
+                  name: 'HTTP Strict Transport Security missing or short on {#URL}'
+                  priority: AVERAGE
+                  description: |
+                    Header Strict Transport Security is required.
+                    
+                    See https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Strict_Transport_Security_Cheat_Sheet.html
+                  dependencies:
+                    - name: 'Error retrieving HTTP headers on {#URL}'
+                      expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) > 0'
+                      recovery_expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) = 0'
+                  tags:
+                    - tag: component
+                      value: http_headers
+            - uuid: 8a02732944804868befb30c82607a153
+              name: 'HTTP Headers - Referrer policy for {#URL}'
+              type: DEPENDENT
+              key: 'http.headers.referrerpolicy[{#URL}]'
+              value_type: TEXT
+              description: |
+                Referrer-Policy header content.
+                See https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referrer-Policy
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - '(?im)^referrer-policy:\s*(\S+)\s*$'
+                    - \1
+                  error_handler: CUSTOM_VALUE
+              master_item:
+                key: 'http_headers_curl.sh[{#URL},{#METHOD},{#FOLLOW}]'
+              tags:
+                - tag: component
+                  value: http_headers
+              trigger_prototypes:
+                - uuid: e519a463dd6945aaa6f1401605791e9e
+                  expression: 'length(last(/HTTP headers/http.headers.referrerpolicy[{#URL}]))=0 and ({#REFERRER}="1")'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'length(last(/HTTP headers/http.headers.referrerpolicy[{#URL}]))>0 or ({#REFERRER}="0")'
+                  name: 'Referrer policy missing on {#URL}'
+                  priority: WARNING
+                  description: |
+                    The required Referrer-Policy header is missing.
+                    
+                    See https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referrer-Policy
+                  dependencies:
+                    - name: 'Error retrieving HTTP headers on {#URL}'
+                      expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) > 0'
+                      recovery_expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) = 0'
+                  tags:
+                    - tag: component
+                      value: http_headers
+            - uuid: db61b8d8d622423390a270449b7e8def
+              name: 'HTTP Headers - Status Code is OK {#URL}'
+              type: DEPENDENT
+              key: 'http.headers.statuscode.ok[{#URL}]'
+              description: 'The item contains 1 if the Status Code for URL is between 200 and 399.'
+              valuemap:
+                name: 'HTTP Headers overal status'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      // Vstupní hodnota v Zabbix pre-processing je v proměnné 'value'.
+                      
+                      if (Number(value) >= 200 && Number(value) < 400) {
+                          return 1;
+                      } else {
+                          return 0;
+                      }
+              master_item:
+                key: 'http.headers.statuscode[{#URL}]'
+              tags:
+                - tag: component
+                  value: http_headers
+            - uuid: e0b6f9f46ec649e8a4a8d835f5108602
+              name: 'HTTP Headers - Status Code for {#URL}'
+              type: DEPENDENT
+              key: 'http.headers.statuscode[{#URL}]'
+              description: 'Status Code for URL.'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - '(?im)^ZBX-HTTP-CODE:\s*(\d+)$'
+                    - \1
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              master_item:
+                key: 'http_headers_curl.sh[{#URL},{#METHOD},{#FOLLOW}]'
+              tags:
+                - tag: component
+                  value: http_headers
+              trigger_prototypes:
+                - uuid: f4ffba1165c74db99eafcf81435778a3
+                  expression: 'last(/HTTP headers/http.headers.statuscode[{#URL}])>=400'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/HTTP headers/http.headers.statuscode[{#URL}])<400'
+                  name: 'HTTP error status {ITEM.LASTVALUE} on {#URL}'
+                  opdata: 'last(/HTTP headers/http.headers.statuscode[{#URL}])'
+                  priority: AVERAGE
+                  description: 'see https://en.wikipedia.org/wiki/List_of_HTTP_status_codes'
+                  dependencies:
+                    - name: 'Error retrieving HTTP headers on {#URL}'
+                      expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) > 0'
+                      recovery_expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) = 0'
+                  tags:
+                    - tag: component
+                      value: http_headers
+                - uuid: b3bb15c1407844909c12f251740788e4
+                  expression: 'last(/HTTP headers/http.headers.statuscode[{#URL}])<100'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/HTTP headers/http.headers.statuscode[{#URL}])>=100'
+                  name: 'No HTTP status code on {#URL}'
+                  priority: WARNING
+                  description: 'The HTTP request did not return a status code; an error usually occurs.'
+                  dependencies:
+                    - name: 'Error retrieving HTTP headers on {#URL}'
+                      expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) > 0'
+                      recovery_expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) = 0'
+                  tags:
+                    - tag: component
+                      value: http_headers
+            - uuid: 34fa7b55e66f4b8d879b18d317749eb2
+              name: 'HTTP Headers - HTTP protocol version for {#URL}'
+              type: DEPENDENT
+              key: 'http.headers.version[{#URL}]'
+              value_type: TEXT
+              description: |
+                HTTP protocol version: 2, 1/1, 1/0 ...
+                HTTP2 support is required, applications written in Perl are an exception. The most common reasons for malfunction:
+                - the HTTP2 module is not enabled,
+                - you are using the mod_php module instead of the php_fpm process.
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - '(?im)^ZBX-HTTP-VERSION:\s*(.+)$'
+                    - \1
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              master_item:
+                key: 'http_headers_curl.sh[{#URL},{#METHOD},{#FOLLOW}]'
+              tags:
+                - tag: component
+                  value: http_headers
+              trigger_prototypes:
+                - uuid: b7c123f813d04ca89347ba3c137f727f
+                  expression: 'last(/HTTP headers/http.headers.version[{#URL}])<>"2" and ({#HTTP2}="1")'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/HTTP headers/http.headers.version[{#URL}])="2" or ({#HTTP2}="0")'
+                  name: 'HTTP2 required but missing on {#URL}'
+                  priority: INFO
+                  description: |
+                    HTTP2 support is required. Applications written in Perl are an exception. 
+                    The most common reasons for malfunction:
+                    - the HTTP2 module is not enabled,
+                    - you are using the mod_php module instead of the php_fpm process.
+                  dependencies:
+                    - name: 'Error retrieving HTTP headers on {#URL}'
+                      expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) > 0'
+                      recovery_expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) = 0'
+                  tags:
+                    - tag: component
+                      value: http_headers
+            - uuid: bf02e1678450440088f16eca7ee7f421
+              name: 'HTTP Headers - X-Frame-Options for {#URL}'
+              type: DEPENDENT
+              key: 'http.headers.xframeoption[{#URL}]'
+              value_type: TEXT
+              description: |
+                Header X-Frame-Options is deprecated. Use Content Security Policy (CSP) frame-ancestors directive if possible.
+                
+                See https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html#x-frame-options
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - '(?im)^x-frame-options\s*:\s*(\S+).*$'
+                    - \1
+                  error_handler: CUSTOM_VALUE
+              master_item:
+                key: 'http_headers_curl.sh[{#URL},{#METHOD},{#FOLLOW}]'
+              tags:
+                - tag: component
+                  value: http_headers
+              trigger_prototypes:
+                - uuid: ec98b191a724492b95785cf7e13b546d
+                  expression: 'length(last(/HTTP headers/http.headers.xframeoption[{#URL}]))>0 and ({#DEPRECATED}="1")'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'length(last(/HTTP headers/http.headers.xframeoption[{#URL}]))=0 or ({#DEPRECATED}="0")'
+                  name: 'X-Frame-Options is deprecated, but exists on {#URL}'
+                  opdata: 'last(/HTTP headers/http.headers.xframeoption[{#URL}])'
+                  priority: WARNING
+                  description: |
+                    X-Frame-Options header is deprecated, prefer directive frame-ancestors in CSP header.
+                    see https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Frame-Options
+                  dependencies:
+                    - name: 'Error retrieving HTTP headers on {#URL}'
+                      expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) > 0'
+                      recovery_expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) = 0'
+                  tags:
+                    - tag: component
+                      value: http_headers
+            - uuid: 2d1cea8daa78463b9954ad144ff37be8
+              name: 'HTTP Headers - X-Powered-By for {#URL}'
+              type: DEPENDENT
+              key: 'http.headers.xpoweredby[{#URL}]'
+              description: |
+                Header X-Powered-By exposes the server to attackers. 
+                
+                See https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html#x-powered-by
+              valuemap:
+                name: 'HTTP Headers - exists header'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - '(?im)^X-Powered-By\s*'
+                    - '1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              master_item:
+                key: 'http_headers_curl.sh[{#URL},{#METHOD},{#FOLLOW}]'
+              tags:
+                - tag: component
+                  value: http_headers
+              trigger_prototypes:
+                - uuid: cb899f19e7b746a380b316d2106a7fa7
+                  expression: 'last(/HTTP headers/http.headers.xpoweredby[{#URL}])>0 and ({#DEPRECATED}="1")'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/HTTP headers/http.headers.xpoweredby[{#URL}])=0 or ({#DEPRECATED}="0")'
+                  name: 'X-Powered-By is deprecated, but exists for {#URL}'
+                  priority: WARNING
+                  description: |
+                    Header X-Powered-By is deprecated but exists.
+                    
+                    See https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html#x-powered-by
+                  dependencies:
+                    - name: 'Error retrieving HTTP headers on {#URL}'
+                      expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) > 0'
+                      recovery_expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) = 0'
+                  tags:
+                    - tag: component
+                      value: http_headers
+            - uuid: f9feeb2408aa4d329512b52dc4af94e4
+              name: 'HTTP Headers - X-XSS-Protection for {#URL}'
+              type: DEPENDENT
+              key: 'http.headers.xxssprotection[{#URL}]'
+              description: |
+                Header X-XSS-Protection is deprecated, remove or set value 0.
+                
+                See https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html#x-xss-protection
+              valuemap:
+                name: 'HTTP Headers - exists header'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - '(?im)^x-xss-protection:\s*(\d)'
+                    - \1
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              master_item:
+                key: 'http_headers_curl.sh[{#URL},{#METHOD},{#FOLLOW}]'
+              tags:
+                - tag: component
+                  value: http_headers
+              trigger_prototypes:
+                - uuid: 0d7488b4e22b435986cfcc1c340e5a78
+                  expression: 'last(/HTTP headers/http.headers.xxssprotection[{#URL}])>0 and ({#DEPRECATED}="1")'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/HTTP headers/http.headers.xxssprotection[{#URL}])=0 or ({#DEPRECATED}="0")'
+                  name: 'X-XSS-Protection is deprecated but exists on {#URL}'
+                  priority: WARNING
+                  description: |
+                    Header X-XSS-Protection is deprecated, remove it or set value 0.
+                    
+                    See https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html#x-xss-protection
+                  dependencies:
+                    - name: 'Error retrieving HTTP headers on {#URL}'
+                      expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) > 0'
+                      recovery_expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) = 0'
+                  tags:
+                    - tag: component
+                      value: http_headers
+            - uuid: a235f9063a75423d983ad52a81f4dbd5
+              name: 'HTTP headers raw: {#URL}'
+              type: EXTERNAL
+              key: 'http_headers_curl.sh[{#URL},{#METHOD},{#FOLLOW}]'
+              delay: 5m
+              value_type: TEXT
+              description: |
+                Raw response headers fetched by externí skript http_headers_curl.sh pro {#URL}.
+                Výstup obsahuje HTTP hlavičky posledního response, a na konci metriky:
+                ZBX-HTTP-VERSION, ZBX-HTTP-CODE a případně ZBX-ERROR / ZBX-ERROR-DETAIL.
+              timeout: 5s
+              tags:
+                - tag: component
+                  value: http_headers
+                - tag: stage
+                  value: raw
+          trigger_prototypes:
+            - uuid: 38167452cbf447dfb2de01906cd141fe
+              expression: 'length(last(/HTTP headers/http.headers.xframeoption[{#URL}]))<1 and length(last(/HTTP headers/http.headers.csp.frameancestors[{#URL}]))<1 and ({#FRAME}="1")'
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: 'length(last(/HTTP headers/http.headers.xframeoption[{#URL}]))>0 or length(last(/HTTP headers/http.headers.csp.frameancestors[{#URL}]))>0 or ({#FRAME}="0")'
+              name: 'Frame clickjacking defense missing on {#URL}'
+              url_name: Clickjacking
+              url: 'https://owasp.org/www-community/attacks/Clickjacking'
+              priority: WARNING
+              description: 'Clickjacking Defense missing, see https://owasp.org/www-community/attacks/Clickjacking'
+              dependencies:
+                - name: 'Error retrieving HTTP headers on {#URL}'
+                  expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) > 0'
+                  recovery_expression: 'length(last(/HTTP headers/http.headers.error[{#URL}])) = 0'
+              tags:
+                - tag: component
+                  value: http_headers
+          master_item:
+            key: http.headers.list
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  // Parsovací JS pro HTTP_HEADERS_TARGETS -> vrátí LLD JSON {"data":[{...},...]}
+                  function trim(s){ return s.replace(/^\s+|\s+$/g, ''); }
+                  
+                  // Rozdělí podle čárek, ale ignoruje čárky uvnitř uvozovek
+                  function splitOutsideQuotes(s){
+                    var parts = [];
+                    var cur = '';
+                    var inQuotes = false;
+                    for(var i=0;i<s.length;i++){
+                      var ch = s.charAt(i);
+                      if(ch === '"') { inQuotes = !inQuotes; cur += ch; continue; }
+                      if(ch === ',' && !inQuotes){
+                        parts.push(cur);
+                        cur = '';
+                      } else {
+                        cur += ch;
+                      }
+                    }
+                    if(cur !== '') parts.push(cur);
+                    return parts;
+                  }
+                  
+                  // Normalize boolean-like strings to '1' or '0'
+                  function boolToFlag(v, defaultVal){
+                    if(v === undefined || v === null || v === '') return defaultVal ? '1' : '0';
+                    v = String(v).trim().toLowerCase();
+                    if(v === '1' || v === 'true' || v === 'yes' || v === 'on') return '1';
+                    if(v === '0' || v === 'false' || v === 'no' || v === 'off') return '0';
+                    // if provided as key-only like "|frame" treat as true
+                    if(v === 'frame' || v === 'http2' || v === 'hsts' || v === 'referrer' || v === 'deprecated') return '1';
+                    // fallback to default
+                    return defaultVal ? '1' : '0';
+                  }
+                  
+                  // parse single entry like:
+                  // https://a|method=GET|follow=0|http2=1|hsts=0|frame=1
+                  function parseEntry(e){
+                    e = trim(e);
+                    if(e === '') return null;
+                    var parts = e.split('|');
+                    var rawUrl = trim(parts[0]);
+                    if(rawUrl.length>=2 && rawUrl.charAt(0) === '"' && rawUrl.charAt(rawUrl.length-1) === '"'){
+                      rawUrl = rawUrl.substring(1, rawUrl.length-1);
+                    }
+                    var method = 'HEAD';
+                    var follow = '1';
+                    // defaults requested
+                    var http2 = '1';      // default ano
+                    var hsts = '1';       // default ano
+                    var frame = '0';      // default ne
+                    var referrer = '0';   // default ne
+                    var deprecated = '0'; // default ne
+                  
+                    for(var i=1;i<parts.length;i++){
+                      var kv = parts[i].split('=');
+                      var key = trim(kv[0]).toLowerCase();
+                      var val = '';
+                      if(kv.length>1) val = trim(kv.slice(1).join('='));
+                      // allow flags without =value (e.g. |frame)
+                      if(val === '') {
+                        // if value omitted, treat as true flag
+                        val = key;
+                      }
+                      if(key === 'method'){
+                        var mm = val.toUpperCase();
+                        if(mm === 'GET' || mm === 'HEAD') method = mm;
+                      } else if(key === 'follow'){
+                        follow = boolToFlag(val, true);
+                      } else if(key === 'http2'){
+                        http2 = boolToFlag(val, true);
+                      } else if(key === 'hsts'){
+                        hsts = boolToFlag(val, true);
+                      } else if(key === 'frame'){
+                        frame = boolToFlag(val, false);
+                      } else if(key === 'referrer'){
+                        referrer = boolToFlag(val, false);
+                      } else if(key === 'deprecated'){
+                        deprecated = boolToFlag(val, false);
+                      } else {
+                        // ignore unknown keys (can extend later)
+                      }
+                    }
+                  
+                    // simple URL validation: musí začínat http:// nebo https:// (jinak IGNORUJ)
+                    if(!/^https?:\/\//i.test(rawUrl)){
+                      return null;
+                    }
+                  
+                    return {
+                      url: rawUrl,
+                      method: method,
+                      follow: follow,
+                      http2: http2,
+                      hsts: hsts,
+                      frame: frame,
+                      referrer: referrer,
+                      deprecated: deprecated
+                    };
+                  }
+                  
+                  // MAIN
+                  try {
+                    var inp = (value === null || value === undefined) ? '' : String(value);
+                    inp = inp.trim();
+                    if(inp === ''){
+                      return JSON.stringify({data:[]});
+                    }
+                    var entries = splitOutsideQuotes(inp);
+                    var data = [];
+                    for(var i=0;i<entries.length;i++){
+                      var e = trim(entries[i]);
+                      if(e === '') continue;
+                      var p = parseEntry(e);
+                      if(!p) continue;
+                      data.push({
+                        "{#URL}": p.url,
+                        "{#METHOD}": p.method,
+                        "{#FOLLOW}": p.follow,
+                        "{#HTTP2}": p.http2,
+                        "{#HSTS}": p.hsts,
+                        "{#FRAME}": p.frame,
+                        "{#REFERRER}": p.referrer,
+                        "{#DEPRECATED}": p.deprecated
+                      });
+                    }
+                    return JSON.stringify({data: data});
+                  } catch (err) {
+                    // v případě chyby vrátíme prázdné discovery (zachovej to, nebo loguj)
+                    return JSON.stringify({data:[]});
+                  }
+      tags:
+        - tag: component
+          value: http_headers
+      macros:
+        - macro: '{$HTTP_HEADERS_HSTS_MIN_VALUE}'
+          value: '15552000'
+          description: 'minimální požadovaný počet vteřin v hlavičce HSTS'
+        - macro: '{$HTTP_HEADERS_TARGETS}'
+      valuemaps:
+        - uuid: 6c0de5c0858047e790709a867fa537cb
+          name: 'HTTP Headers - exists header'
+          mappings:
+            - value: '0'
+              newvalue: missing
+            - newvalue: exists
+        - uuid: a8c91142b3cf4744b43fde5631442d6a
+          name: 'HTTP Headers - valid header'
+          mappings:
+            - value: '0'
+              newvalue: 'missing or incorrect'
+            - value: '1'
+              newvalue: valid
+        - uuid: 5ed70799835d451abc967c474102b75f
+          name: 'HTTP Headers overal status'
+          mappings:
+            - value: '0'
+              newvalue: incorrect
+            - value: '1'
+              newvalue: valid
+            - value: '2'
+              newvalue: error
