@@ -10,7 +10,7 @@ zabbix_export:
       description: 'Port pro nešifrovaný LDAP (389/tcp) by neměl být dostupný ze sítě (ze Zabbix serveru/proxy)'
       vendor:
         name: lpavlicek
-        version: 7.4-1
+        version: 7.4-2
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -18,21 +18,34 @@ zabbix_export:
           name: 'Open LDAP port 389'
           type: SIMPLE
           key: 'net.tcp.service[ldap,,]'
+          delay: 5m
           description: 'test zda je otevřen LDAP port'
+          valuemap:
+            name: 'Otevřen LDAP port 389'
           tags:
-            - tag: net_service
+            - tag: component
               value: ldap
           triggers:
             - uuid: c472b1666a6943509148b0211dad02ab
               expression: 'last(/Open LDAP port/net.tcp.service[ldap,,])=1'
-              name: 'Otevřený LDAP port'
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: 'last(/Open LDAP port/net.tcp.service[ldap,,])=0'
+              name: 'Otevřený LDAP port ({HOST.NAME})'
               priority: AVERAGE
-              description: 'LDAP server po instalaci má obvykle otevřen nešifrovanou komunikaci na portu 389, což je bezpečnostní riziko. Omezte komunikaci pouze na localhost.'
+              description: 'LDAP server po instalaci má obvykle otevřen nešifrovanou komunikaci na portu 389, což je bezpečnostní riziko. Omezte nešifrovanou komunikaci pouze na localhost.'
               tags:
                 - tag: scope
                   value: security
       tags:
         - tag: class
           value: software
-        - tag: target
+        - tag: component
           value: ldap
+      valuemaps:
+        - uuid: 1ac7b6245ba64c45887263cec5689dd4
+          name: 'Otevřen LDAP port 389'
+          mappings:
+            - value: '0'
+              newvalue: OK_nedostupný
+            - value: '1'
+              newvalue: CHYBA_otevřen
