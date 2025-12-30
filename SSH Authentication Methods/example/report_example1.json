@@ -1,0 +1,1 @@
+{"sshfp_record":{"keys_match":true,"exists":false,"dns_name":"test.example.cz"},"ssh_checks":[{"available":true,"authentication_methods":["publickey"],"ip_address":"192.0.2.1"}]}

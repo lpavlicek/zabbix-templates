@@ -1,0 +1,17 @@
+# kam se loguje z aplikace
+# možnosti:
+#   syslog
+#   jméno_souboru
+log:
+    destination: logs/ssh.auth_methods.log
+    #destination: syslog
+    min_level: info
+    facility: local0
+    #ident: ssh_auth_methods
+#
+#
+template_name: SSH authentication methods
+push_key: ssh.monitoring.auth_methods
+servers:
+    - url: https://zabbix.example.cz/zabbix/api_jsonrpc.php
+      key: cGE4TUIwN0VDeU9nclJJbGQwbmdQSFUKLS0tIDlEbTRjZkJqV3ByakEexample

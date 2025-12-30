@@ -1,0 +1,423 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 060d89ac12ff4ae3818df7d182217b85
+      template: 'ssh auth methods'
+      name: 'SSH authentication methods'
+      description: |
+        Šablona pro monitorování SSH služby. Obsahuje dva testy:
+        - test ze Zabbix serveru/proxy, zda je otevřen SSH port
+        - test z externího serveru, který ověřuje, jaké metody jsou otevřeny do světa
+        
+        Upozornění:
+        - SSH nedostupné: WARNING
+        - Autentizace heslem: HIGH  
+        - Jiná autentizace než publickey: WARNING
+        - SSHFP klíče se neshodují: HIGH
+      vendor:
+        name: lpavlicek
+        version: 7.4-2
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: d4786b255e5246c482aa40b8dde8d099
+          name: 'SSH available'
+          type: SIMPLE
+          key: 'net.tcp.service[ssh,,{$SSH.PORT}]'
+          delay: 5m
+          tags:
+            - tag: component
+              value: ssh
+            - tag: ssh
+              value: available
+          triggers:
+            - uuid: 2e8ab86c01224be9857cde7ce1875129
+              expression: 'last(/ssh auth methods/net.tcp.service[ssh,,{$SSH.PORT}])=0'
+              name: 'SSH unavailable'
+              priority: HIGH
+              description: 'SSH není dostupné na {ITEM.LASTVALUE:ssh.unavailable.count} IP adresách z celkem {ITEM.LASTVALUE:ssh.total.count}. Detaily: {ITEM.LASTVALUE:ssh.unavailable.details}'
+              tags:
+                - tag: component
+                  value: ssh
+                - tag: scope
+                  value: availability
+        - uuid: d0ad1c111eea4f14862350ec1c8c52eb
+          name: 'SSH available IP addresses count'
+          type: DEPENDENT
+          key: ssh.available.count
+          description: 'Počet IP adres, na kterých je SSH dostupné'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.ssh_checks[?(@.available == ''true'')].length()'
+          master_item:
+            key: ssh.monitoring.auth_methods
+          tags:
+            - tag: component
+              value: ssh
+            - tag: ssh
+              value: authentication
+        - uuid: b07af4c98a354127aa3dae5ecc7c34e2
+          name: 'SSH monitoring auth methods'
+          type: TRAP
+          key: ssh.monitoring.auth_methods
+          history: 7d
+          value_type: TEXT
+          allowed_hosts: '{$SSH.AUTH.METHODS.ALLOWED.HOSTS},::1'
+          description: |
+            JSON data obsahující výsledky SSH monitorování.
+            Odesílá se z externí aplikace přes Zabbix trapper.
+          tags:
+            - tag: component
+              value: ssh
+            - tag: ssh
+              value: authentication
+            - tag: stage
+              value: raw
+          triggers:
+            - uuid: 1aa4f30617e342e3a95e472489962b9c
+              expression: 'nodata(/ssh auth methods/ssh.monitoring.auth_methods,{$SSH.AUTH.METHODS.INFO.TIME})=1'
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: 'nodata(/ssh auth methods/ssh.monitoring.auth_methods,{$SSH.AUTH.METHODS.INFO.TIME})=0'
+              name: 'No data on SSH authentication methods has been recorded for the last 12 hours.'
+              priority: INFO
+              description: 'Zabbix trapper nezískal údaje o metodách SSH autentizace za posledních {$SSH.AUTH.METHODS.INFO.TIME} hodin. Problém může být ve spouštění skriptu pro detekci či v síťové komunikaci.'
+              tags:
+                - tag: component
+                  value: ssh
+                - tag: scope
+                  value: availability
+            - uuid: d379183b18684ca2bf866b6f36af906c
+              expression: 'nodata(/ssh auth methods/ssh.monitoring.auth_methods,{$SSH.AUTH.METHODS.AVERAGE.TIME})=1'
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: 'nodata(/ssh auth methods/ssh.monitoring.auth_methods,{$SSH.AUTH.METHODS.AVERAGE.TIME})=0'
+              name: '{HOST.NAME}: No data on SSH authentication methods has been recorded for the last 36 hours.'
+              priority: AVERAGE
+              description: 'Zabbix trapper nezískal údaje o metodách SSH autentizace za posledních {$SSH.AUTH.METHODS.AVERAGE.TIME} hodin. Problém může být ve spouštění skriptu pro detekci či v síťové komunikaci.'
+              manual_close: 'YES'
+              dependencies:
+                - name: 'No data on SSH authentication methods has been recorded for the last 12 hours.'
+                  expression: 'nodata(/ssh auth methods/ssh.monitoring.auth_methods,{$SSH.AUTH.METHODS.INFO.TIME})=1'
+                  recovery_expression: 'nodata(/ssh auth methods/ssh.monitoring.auth_methods,{$SSH.AUTH.METHODS.INFO.TIME})=0'
+              tags:
+                - tag: component
+                  value: ssh
+                - tag: scope
+                  value: availability
+        - uuid: 44b80269f4bf4090a8b14f12ef5d5b6e
+          name: 'SSH IPs with non-publickey authentication count'
+          type: DEPENDENT
+          key: ssh.non_publickey_auth.count
+          description: 'Počet dostupných IP adres, které podporují jinou autentizaci než pouze publickey'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var count = 0;
+                  
+                  for (var i = 0; i < data.ssh_checks.length; i++) {
+                      var check = data.ssh_checks[i];
+                      if (check.available && check.authentication_methods) {
+                          // Zkontrolujeme, zda jsou dostupné jiné metody než jen publickey
+                          var methods = check.authentication_methods;
+                          var hasNonPublickey = false;
+                  
+                          for (var j = 0; j < methods.length; j++) {
+                              if (methods[j] !== 'publickey') {
+                                  hasNonPublickey = true;
+                                  break;
+                               }
+                          }
+                  
+                          if (hasNonPublickey) {
+                              count++;
+                          }
+                      }
+                  }
+                  
+                  return count;
+          master_item:
+            key: ssh.monitoring.auth_methods
+          tags:
+            - tag: component
+              value: ssh
+            - tag: ssh
+              value: authentication
+          triggers:
+            - uuid: 84512ba7e8d3403bb7a4f82751284223
+              expression: 'last(/ssh auth methods/ssh.non_publickey_auth.count)>0'
+              name: 'SSH non-publickey authentication detected'
+              priority: WARNING
+              description: 'SSH podporuje jinou autentizaci než publickey na {ITEM.LASTVALUE:ssh.non_publickey_auth.count} IP adresách. Detaily: {ITEM.LASTVALUE:ssh.non_publickey_auth.details}'
+              tags:
+                - tag: component
+                  value: ssh
+                - tag: scope
+                  value: security
+        - uuid: dc6212d5a15e472b8b4bef43d5cff7f4
+          name: 'SSH IPs with non-publickey authentication details'
+          type: DEPENDENT
+          key: ssh.non_publickey_auth.details
+          value_type: TEXT
+          description: 'Seznam IP adres s jinou autentizací než pouze publickey'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var details = [];
+                  
+                  for (var i = 0; i < data.ssh_checks.length; i++) {
+                      var check = data.ssh_checks[i];
+                      if (check.available && check.authentication_methods) {
+                          var methods = check.authentication_methods;
+                          var nonPublickeyMethods = [];
+                  
+                          for (var j = 0; j < methods.length; j++) {
+                              if (methods[j] !== 'publickey') {
+                                  nonPublickeyMethods.push(methods[j]);
+                              }
+                          }
+                  
+                          if (nonPublickeyMethods.length > 0) {
+                              details.push(check.ip_address + ': ' + nonPublickeyMethods.join(','));
+                          }
+                      }
+                  }
+                  
+                  return details.length > 0 ? details.join('; ') : 'None';
+          master_item:
+            key: ssh.monitoring.auth_methods
+          tags:
+            - tag: component
+              value: ssh
+            - tag: ssh
+              value: authentication
+        - uuid: 99260a97b63a473d95314a8c78bff7ce
+          name: 'SSH IPs with password authentication count'
+          type: DEPENDENT
+          key: ssh.password_auth.count
+          description: 'Počet dostupných IP adres, které podporují autentizaci heslem'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var count = 0;
+                  
+                  for (var i = 0; i < data.ssh_checks.length; i++) {
+                      var check = data.ssh_checks[i];
+                      if (check.available && check.authentication_methods && 
+                          check.authentication_methods.indexOf('password') !== -1) {
+                          count++;
+                      }
+                  }
+                  
+                  return count;
+          master_item:
+            key: ssh.monitoring.auth_methods
+          tags:
+            - tag: component
+              value: ssh
+            - tag: ssh
+              value: authentication
+          triggers:
+            - uuid: 98436193637f4a27b8916dae94cc90d5
+              expression: 'last(/ssh auth methods/ssh.password_auth.count)>0'
+              name: 'SSH password authentication detected'
+              priority: AVERAGE
+              description: 'SSH password autentizace je povolena na {ITEM.LASTVALUE:ssh.password_auth.count} IP adresách. IP adresy: {ITEM.LASTVALUE:ssh.password_auth.details}'
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: ssh
+                - tag: scope
+                  value: security
+        - uuid: 9975fe90878c4a2b8293e8512aeea429
+          name: 'SSH IPs with password authentication details'
+          type: DEPENDENT
+          key: ssh.password_auth.details
+          value_type: TEXT
+          description: 'Seznam IP adres s dostupnou autentizací heslem'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var ips = [];
+                  
+                  for (var i = 0; i < data.ssh_checks.length; i++) {
+                      var check = data.ssh_checks[i];
+                      if (check.available && check.authentication_methods && 
+                          check.authentication_methods.indexOf('password') !== -1) {
+                          ips.push(check.ip_address);
+                      }
+                  }
+                  
+                  return ips.length > 0 ? ips.join(', ') : 'None';
+          master_item:
+            key: ssh.monitoring.auth_methods
+          tags:
+            - tag: component
+              value: ssh
+            - tag: ssh
+              value: authentication
+        - uuid: 6f95e872162b40cd902d55f704478f4e
+          name: 'SSHFP DNS name'
+          type: DEPENDENT
+          key: ssh.sshfp.dns_name
+          value_type: TEXT
+          description: 'DNS název použitý pro SSHFP záznamy'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.sshfp_record.dns_name
+              error_handler: CUSTOM_VALUE
+              error_handler_params: N/A
+          master_item:
+            key: ssh.monitoring.auth_methods
+          tags:
+            - tag: component
+              value: ssh
+            - tag: ssh
+              value: authentication
+        - uuid: 615bea1ed2fd4fcc804d262ec35718ef
+          name: 'SSHFP DNS record exists'
+          type: DEPENDENT
+          key: ssh.sshfp.exists
+          description: 'Zda existuje SSHFP DNS záznam (1 = ano, 0 = ne)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.sshfp_record.exists
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            - type: BOOL_TO_DECIMAL
+          master_item:
+            key: ssh.monitoring.auth_methods
+          tags:
+            - tag: component
+              value: ssh
+            - tag: ssh
+              value: authentication
+        - uuid: f42ec229027b4d17b59468993bf628b1
+          name: 'SSHFP keys match'
+          type: DEPENDENT
+          key: ssh.sshfp.keys_match
+          description: 'Zda se SSHFP klíče shodují se serveru (1 = ano, 0 = ne, prázdné pokud SSHFP neexistuje)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.sshfp_record.keys_match
+              error_handler: CUSTOM_VALUE
+            - type: BOOL_TO_DECIMAL
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '2'
+          master_item:
+            key: ssh.monitoring.auth_methods
+          tags:
+            - tag: component
+              value: ssh
+            - tag: ssh
+              value: authentication
+        - uuid: 581060be00bc4237b971bdc14313c35f
+          name: 'SSH total IP addresses count'
+          type: DEPENDENT
+          key: ssh.total.count
+          description: 'Celkový počet testovaných IP adres'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ssh_checks.length()
+          master_item:
+            key: ssh.monitoring.auth_methods
+          tags:
+            - tag: component
+              value: ssh
+            - tag: ssh
+              value: authentication
+        - uuid: 0451cf7a43ca40f9a9cb244efca87f70
+          name: 'SSH unavailable IP addresses count'
+          type: DEPENDENT
+          key: ssh.unavailable.count
+          description: 'Počet IP adres, na kterých SSH není dostupné'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.ssh_checks[?(@.available == ''false'')].length()'
+          master_item:
+            key: ssh.monitoring.auth_methods
+          tags:
+            - tag: component
+              value: ssh
+            - tag: ssh
+              value: authentication
+        - uuid: 1c4819526725451ea8b1399f4a31cebb
+          name: 'SSH unavailable IPs with errors'
+          type: DEPENDENT
+          key: ssh.unavailable.details
+          value_type: TEXT
+          description: 'Detaily o nedostupných SSH IP adresách včetně chybových hlášení'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var unavailable = [];
+                  
+                  for (var i = 0; i < data.ssh_checks.length; i++) {
+                      var check = data.ssh_checks[i];
+                      if (!check.available) {
+                          unavailable.push(check.ip_address + ': ' + (check.error || 'Unknown error'));
+                      }
+                  }
+                  
+                  return unavailable.length > 0 ? unavailable.join('; ') : 'None';
+          master_item:
+            key: ssh.monitoring.auth_methods
+          tags:
+            - tag: component
+              value: ssh
+            - tag: ssh
+              value: authentication
+        - uuid: 90a3530e1fc947cca8139fab6d5132c8
+          name: 'SSH status'
+          type: CALCULATED
+          key: ssh_status
+          params: '(1 - last(//net.tcp.service[ssh,,{$SSH.PORT}])) + ( 2 * last(//ssh.password_auth.count))'
+          description: 'Výpočet stavu pro zobrazení barev na honeycomb grafu.'
+          tags:
+            - tag: component
+              value: ssh
+      tags:
+        - tag: component
+          value: ssh
+      macros:
+        - macro: '{$SSH.AUTH.METHODS.ALLOWED.HOSTS}'
+          value: '193.84.68.4,2001:4de8:5e:1000::4'
+          description: 'IP adresy, ze kterých se monitorují autentizační metody povolené pro SSH.'
+        - macro: '{$SSH.AUTH.METHODS.AVERAGE.TIME}'
+          value: 36h
+          description: 'Událost úrovně AVERAGE vznikne, pokud uvedenou dobu nedorazí informace o testování autentizačních metod.'
+        - macro: '{$SSH.AUTH.METHODS.INFO.TIME}'
+          value: 12h
+          description: 'Událost úrovně INFO vznikne, pokud uvedenou dobu nedorazí informace o testování autentizačních metod.'
+        - macro: '{$SSH.PORT}'
+          value: '22'
+          description: 'TCP port, na kterém běží na hostu SSH server'
+  triggers:
+    - uuid: 1dc4131717a24cd28e84e83b49485035
+      expression: 'last(/ssh auth methods/ssh.sshfp.exists)=1 and last(/ssh auth methods/ssh.sshfp.keys_match)=0'
+      name: 'SSHFP keys do not match'
+      priority: HIGH
+      description: 'SSHFP klíče v DNS se neshodují s klíči na serveru pro {ITEM.LASTVALUE:ssh.sshfp.dns_name}. Toto může indikovat bezpečnostní incident (MITM útok) nebo změnu klíčů na serveru.'
+      manual_close: 'YES'
+      tags:
+        - tag: component
+          value: ssh
+        - tag: scope
+          value: security
