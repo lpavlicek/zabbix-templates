@@ -10,7 +10,7 @@ zabbix_export:
       description: 'The template tests whether the target host redirects HTTP to HTTPS for aliases specified in the user macro {$HTTP_REDIRECT_ALIASES}. Aliases are usually DNS names, but they can also be IP addresses.'
       vendor:
         name: lpavlicek
-        version: 7.4-3
+        version: 7.4-4
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -83,6 +83,8 @@ zabbix_export:
               type: DEPENDENT
               key: 'http.redirect.is_https[{#HOSTNAME}]'
               description: 'Returns 1 if Location header starts with https://, 0 otherwise'
+              valuemap:
+                name: 'HTTP Redirect is https'
               preprocessing:
                 - type: JAVASCRIPT
                   parameters:
@@ -137,12 +139,18 @@ zabbix_export:
                     last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>302 and
                     last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>303 and
                     last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>0
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: |
+                    last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])=301 or
+                    last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])=302 or
+                    last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])=303
                   name: 'HTTP does not redirect to HTTPS for {#HOSTNAME}'
                   priority: WARNING
                   description: 'HTTP request to {#HOSTNAME} returned status code {ITEM.LASTVALUE1}, which is not a redirect (301, 302, or 303).'
                   dependencies:
                     - name: 'HTTP redirect check failed for {#HOSTNAME}'
                       expression: 'last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])=0'
+                      recovery_expression: 'last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])>0'
                   tags:
                     - tag: component
                       value: http-redirect
@@ -150,6 +158,8 @@ zabbix_export:
                       value: security
                 - uuid: 9c2f0e2e34214a0d8103062f3c85b15e
                   expression: 'last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])=0'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])>0'
                   name: 'HTTP redirect check failed for {#HOSTNAME}'
                   priority: HIGH
                   description: 'HTTP request to {#HOSTNAME} did not receive any response or connection failed.'
@@ -163,6 +173,8 @@ zabbix_export:
               expression: |
                 last(/HTTP to HTTPS Redirect Check/http.redirect.is_https[{#HOSTNAME}])=0 and
                 last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>0
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: 'last(/HTTP to HTTPS Redirect Check/http.redirect.is_https[{#HOSTNAME}])=1'
               name: 'HTTP redirect target is not HTTPS for {#HOSTNAME}'
               priority: AVERAGE
               description: 'HTTP redirect for {#HOSTNAME} does not point to HTTPS URL. Location: {ITEM.LASTVALUE1}'
@@ -173,8 +185,13 @@ zabbix_export:
                     last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>302 and
                     last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>303 and
                     last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])<>0
+                  recovery_expression: |
+                    last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])=301 or
+                    last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])=302 or
+                    last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])=303
                 - name: 'HTTP redirect check failed for {#HOSTNAME}'
                   expression: 'last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])=0'
+                  recovery_expression: 'last(/HTTP to HTTPS Redirect Check/http.redirect.status[{#HOSTNAME}])>0'
               tags:
                 - tag: component
                   value: http-redirect
@@ -204,6 +221,13 @@ zabbix_export:
           value: '10'
           description: 'Timeout for HTTP redirect check in seconds'
       valuemaps:
+        - uuid: 3cfee0175ee642e6bbcca8d2fb0e67cb
+          name: 'HTTP Redirect is https'
+          mappings:
+            - value: '0'
+              newvalue: no_https
+            - value: '1'
+              newvalue: yes_https
         - uuid: 30b9a1d7dcf74c43b74f545434394b60
           name: 'HTTP Redirect overall status'
           mappings:
