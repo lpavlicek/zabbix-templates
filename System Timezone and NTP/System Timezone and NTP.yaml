@@ -1,0 +1,79 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: cd68e5091db042d1b2b387a131b28603
+      template: 'System Timezone and NTP'
+      name: 'System Timezone and NTP'
+      description: |
+        onitors system time configuration on Linux hosts.
+        
+        The template verifies:
+        - Configured system timezone
+        - NTP synchronization status
+        
+        Data is collected using Zabbix agent UserParameters based on the
+        `timedatectl` command.
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 0fb312c2201c40ec8fb00c7107f5e57c
+          name: 'System: NTP synchronized'
+          key: timedatectl.ntpsynchronized
+          delay: 10m
+          value_type: TEXT
+          description: |
+            Indicates whether system time is synchronized via NTP.
+            
+            The value is obtained using:
+            timedatectl show -p NTPSynchronized --value
+            
+            Returned values:
+            - yes = synchronized
+            - no = not synchronized
+          tags:
+            - tag: component
+              value: time
+          triggers:
+            - uuid: dc9806288feb4dc88037b678d5b745ee
+              expression: 'last(/System Timezone and NTP/timedatectl.ntpsynchronized)<>"yes"'
+              name: 'System time is not synchronized via NTP'
+              priority: AVERAGE
+              description: 'The system reports that NTP is not synchronized (timedatectl NTPSynchronized != yes).'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: e90509f9bee94655a1bdbaabef3b19c1
+          name: 'System: Timezone'
+          key: timedatectl.timezone
+          delay: 10m
+          value_type: TEXT
+          description: |
+            Returns the system timezone as configured on the host.
+            
+            The value is obtained using:
+            timedatectl show -p Timezone --value
+          tags:
+            - tag: component
+              value: time
+          triggers:
+            - uuid: b2e9f551723948d38774926186857d04
+              expression: 'last(/System Timezone and NTP/timedatectl.timezone)<>"{$TIME.EXPECTED.TZ}"'
+              name: 'Unexpected system timezone'
+              priority: AVERAGE
+              description: 'System timezone differs from the expected value {$TIME.EXPECTED.TZ}.'
+              tags:
+                - tag: scope
+                  value: availability
+      tags:
+        - tag: component
+          value: time
+      macros:
+        - macro: '{$TIME.EXPECTED.TZ}'
+          value: Europe/Prague
+          description: 'Expected system timezone (e.g. Europe/Prague)'
