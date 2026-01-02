@@ -1,0 +1,51 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 8a7cd26438144963a07a0ec968de516b
+      template: 'Postfix Mail Queue'
+      name: 'Postfix Mail Queue'
+      description: 'Zabbix template for monitoring the size of the Postfix mail queue using the `mailq` command. The template collects data via a Zabbix agent UserParameter and raises a trigger when the number of queued messages exceeds a defined limit.'
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 604d970fed5e4b439177a962729d96ba
+          name: 'Postfix: Mail queue size'
+          key: postfix.queue
+          delay: 5m
+          description: |
+            Returns the number of messages currently present in the Postfix mail queue.
+            
+            The value is obtained using the `mailq` command and counting message IDs.
+            Data is collected via a Zabbix agent UserParameter.
+            
+            UserParameter example:
+            
+            UserParameter=postfix.queue, mailq | grep -c '^[0-9A-F]'
+          tags:
+            - tag: component
+              value: smtp
+          triggers:
+            - uuid: a71eba1cd10a4dd1a2f818531c2358a4
+              expression: 'last(/Postfix Mail Queue/postfix.queue)>{$POSTFIX.MAILQ.LIMIT}'
+              name: 'Postfix: Mail queue size is above limit'
+              priority: AVERAGE
+              description: |
+                The number of messages in the Postfix mail queue has exceeded the defined limit.
+                
+                Current limit: {$POSTFIX.MAILQ.LIMIT} messages.
+              tags:
+                - tag: scope
+                  value: availability
+      tags:
+        - tag: component
+          value: smtp
+      macros:
+        - macro: '{$POSTFIX.MAILQ.LIMIT}'
+          value: '20'
+          description: 'Maximum allowed number of messages in the Postfix mail queue before the trigger is fired.'
