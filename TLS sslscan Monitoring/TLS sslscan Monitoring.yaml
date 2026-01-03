@@ -7,9 +7,6 @@ zabbix_export:
     - uuid: 12ccebd48fe04cb5b4d1a9729f13f3ab
       template: 'TLS sslscan Monitoring'
       name: 'TLS sslscan Monitoring'
-      vendor:
-        name: lpavlicek
-        version: '7.4-1'
       description: |
         Template for monitoring SSL/TLS configurations using sslscan tool.
               
@@ -31,6 +28,9 @@ zabbix_export:
               2. Set {$SSLSCAN.TARGETS} macro with comma-separated host:port list
               3. Optionally set {$SSLSCAN.STARTTLS} for non-HTTPS protocols
               4. Adjust {$SSLSCAN.CERT.EXPIRATION.WARN} if needed (default: 7 days)
+      vendor:
+        name: lpavlicek
+        version: 7.4-2
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -132,7 +132,7 @@ zabbix_export:
                       } else {
                         // vstup formát: "Dec 13 03:48:41 2025 GMT"
                         // rozdělíme a převedeme na Date objekt v UTC
-                        var parts = s.split(' ');
+                        var parts = s.split(/\s+/);
                         // možné formáty: [Mon] [DD] [HH:MM:SS] [YYYY] [GMT]
                         // Např: ["Dec","13","03:48:41","2025","GMT"]
                         if (parts.length < 4) {
@@ -164,6 +164,11 @@ zabbix_export:
               tags:
                 - tag: component
                   value: sslscan
+              trigger_prototypes:
+                - uuid: 96b827437f174b2bb054ce13fd2706bf
+                  expression: 'last(/TLS sslscan Monitoring/sslscan.cert.daysuntilexpiration[{#TARGET}]) > 9990'
+                  name: 'Error in parsing expiration date for {#TARGET}'
+                  priority: WARNING
             - uuid: 1dfc04e7fd9b4d46bbe85c6168355e1e
               name: 'TLS sslscan Certificate EC Curve for {#TARGET}'
               type: DEPENDENT
