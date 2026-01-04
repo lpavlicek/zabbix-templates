@@ -1,0 +1,118 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: cba0eeda27434a70ae31b69d263a357b
+      template: 'Debian APT Updates by Zabbix agent'
+      name: 'Debian APT Updates by Zabbix agent'
+      description: |
+        Zabbix template for monitoring available APT updates on
+        Debian and Ubuntu systems using the Zabbix agent and UserParameters.
+        
+        # Total number of available APT updates
+        UserParameter=apt.updates.total,apt list --upgradable 2>/dev/null | grep -c /
+        
+        # Number of available security updates (packages from *-security repositories)
+        UserParameter=apt.updates.security,apt list --upgradable 2>/dev/null | grep -i -c "/.*-security"
+        
+        # Timestamp of the last successful apt update
+        UserParameter=apt.updates.last,stat -c %Y  /var/lib/apt/periodic/update-success-stamp  /var/lib/apt/periodic/update-stamp  /var/lib/apt/lists  /var/lib/apt/lists/partial  /var/cache/apt/pkgcache.bin  2>/dev/null | sort -n | tail -1
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 689ea50428fb4f1887ad796305fca429
+          name: 'APT: Last apt update time'
+          key: apt.updates.last
+          delay: 10m
+          units: unixtime
+          description: |
+            Timestamp of the last successful 'apt update' execution.
+            Used to detect outdated APT package index.
+            
+            UserParameter=apt.updates.last,stat -c %Y /var/lib/apt/periodic/update-success-stamp /var/lib/apt/periodic/update-stamp /var/lib/apt/lists /var/lib/apt/lists/partial /var/cache/apt/pkgcache.bin 2>/dev/null | sort -n | tail -1
+          tags:
+            - tag: component
+              value: apt
+          triggers:
+            - uuid: 896f5f139eba49509fdaf3b83e78d2f2
+              expression: '(now()-last(/Debian APT Updates by Zabbix agent/apt.updates.last))>  {$APT.UPDATE.MAX.AGE}'
+              name: 'APT: apt update not executed for too long ({ITEM.LASTVALUE1})'
+              priority: AVERAGE
+              description: |
+                The APT package index has not been updated within the defined time threshold ({$APT.UPDATE.MAX.AGE}).
+                This may result in outdated or incomplete update information.
+              tags:
+                - tag: scope
+                  value: security
+        - uuid: 4c0480571a1f434e91a96ce82b24d7f1
+          name: 'APT: Available security updates'
+          key: apt.updates.security
+          delay: 10m
+          description: |
+            Number of available APT security updates.
+            Security updates are identified based on the configured system source.
+            
+            UserParameter=apt.update.security,apt list --upgradable 2>/dev/null | grep -i -c "/.*-security"
+          tags:
+            - tag: component
+              value: apt
+          triggers:
+            - uuid: f8e6ed3bf9fd4f7d8155a085c092e644
+              expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.security, 30m)>0'
+              name: 'APT: Security updates are available ({ITEM.LASTVALUE1} updates)'
+              priority: AVERAGE
+              description: |
+                Security updates have been detected repeatedly and were not installed.
+                Immediate attention is recommended.
+              tags:
+                - tag: scope
+                  value: security
+            - uuid: 20340b56e8404b92b68d243f9f38ab69
+              expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.security, 7d) > 0'
+              name: 'APT: Security updates pending for 7 days ({ITEM.LASTVALUE1} updates)'
+              priority: HIGH
+              description: |
+                Security updates have been available for at least 7 days and were not installed.
+                This represents a significant security risk.
+              dependencies:
+                - name: 'APT: Security updates are available ({ITEM.LASTVALUE1} updates)'
+                  expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.security, 30m)>0'
+              tags:
+                - tag: scope
+                  value: security
+        - uuid: c5d9a6c4f726488390743ef3038e6fa7
+          name: 'APT: Available package updates'
+          key: apt.updates.total
+          delay: 10m
+          description: |
+            Number of available APT package updates reported by the system.
+            The value includes both security and non-security updates.
+            Collected via Zabbix agent user parameter.
+            
+            UserParameter=apt.updates.total,apt list --upgradable 2>/dev/null | grep -c /
+          tags:
+            - tag: component
+              value: apt
+      tags:
+        - tag: component
+          value: apt
+      macros:
+        - macro: '{$APT.UPDATE.MAX.AGE}'
+          value: 36h
+          description: 'Maximum allowed age of the last apt update. If exceeded, a trigger is raised.'
+  triggers:
+    - uuid: 261a732c739a44e9a41c0454d09eddaf
+      expression: 'min(last(/Debian APT Updates by Zabbix agent/apt.updates.total)-last(/Debian APT Updates by Zabbix agent/apt.updates.security), 30m) > 0'
+      name: 'APT: Non-security updates are available ({ITEM.LASTVALUE1} updates)'
+      priority: WARNING
+      description: |
+        Non-security package updates have been detected repeatedly.
+        Consider installing updates during the next maintenance window.
+      tags:
+        - tag: scope
+          value: security
