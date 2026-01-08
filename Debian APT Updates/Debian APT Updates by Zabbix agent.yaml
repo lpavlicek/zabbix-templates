@@ -21,7 +21,7 @@ zabbix_export:
         UserParameter=apt.updates.last,stat -c %Y  /var/lib/apt/periodic/update-success-stamp  /var/lib/apt/periodic/update-stamp  /var/lib/apt/lists  /var/lib/apt/lists/partial  /var/cache/apt/pkgcache.bin  2>/dev/null | sort -n | tail -1
       vendor:
         name: lpavlicek
-        version: 7.4-1
+        version: 7.4-2
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -63,7 +63,7 @@ zabbix_export:
               value: apt
           triggers:
             - uuid: f8e6ed3bf9fd4f7d8155a085c092e644
-              expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.security, 30m)>0'
+              expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.security, 11m)>0'
               name: 'APT: Security updates are available ({ITEM.LASTVALUE1} updates)'
               priority: AVERAGE
               description: |
@@ -81,7 +81,7 @@ zabbix_export:
                 This represents a significant security risk.
               dependencies:
                 - name: 'APT: Security updates are available ({ITEM.LASTVALUE1} updates)'
-                  expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.security, 30m)>0'
+                  expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.security, 11m)>0'
               tags:
                 - tag: scope
                   value: security
@@ -107,7 +107,7 @@ zabbix_export:
           description: 'Maximum allowed age of the last apt update. If exceeded, a trigger is raised.'
   triggers:
     - uuid: 261a732c739a44e9a41c0454d09eddaf
-      expression: 'min(last(/Debian APT Updates by Zabbix agent/apt.updates.total)-last(/Debian APT Updates by Zabbix agent/apt.updates.security), 30m) > 0'
+      expression: 'min(last(/Debian APT Updates by Zabbix agent/apt.updates.total)-last(/Debian APT Updates by Zabbix agent/apt.updates.security), 11m) > 0'
       name: 'APT: Non-security updates are available ({ITEM.LASTVALUE1} updates)'
       priority: WARNING
       description: |
