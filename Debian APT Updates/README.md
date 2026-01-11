@@ -4,10 +4,10 @@ This repository provides a **Zabbix template** for monitoring available APT upda
 Debian and Ubuntu systems using the **Zabbix agent** and **UserParameters**.
 
 The template monitors:
-- total number of available APT updates,
 - number of **security** updates,
 - number of **non-security** updates,
 - time of the last successful `apt update`,
+- optional generated upgrade command for pending packages,
 - long-pending security updates with escalation.
 
 Designed and tested with **Zabbix 7.4**.
@@ -31,17 +31,14 @@ Designed and tested with **Zabbix 7.4**.
 Create the following file on the monitored host:
 
 ```
-/etc/zabbix/zabbix_agentd.d/apt.conf
+/etc/zabbix/zabbix_agentd.d/userparameter_apt.conf
 ```
 
 Insert the UserParameters below:
 
 ```ini
-# Total number of available APT updates
-UserParameter=apt.updates.total,apt list --upgradable 2>/dev/null | grep -c /
-
-# Number of available security updates (packages from *-security repositories)
-UserParameter=apt.updates.security,apt list --upgradable 2>/dev/null | grep -i -c "/.*-security"
+# List of available APT updates
+UserParameter=apt.updates.total,apt list --upgradable 2>/dev/null | grep /
 
 # Timestamp of the last successful apt update
 UserParameter=apt.updates.last,stat -c %Y  /var/lib/apt/periodic/update-success-stamp  /var/lib/apt/periodic/update-stamp  /var/lib/apt/lists  /var/lib/apt/lists/partial  /var/cache/apt/pkgcache.bin  2>/dev/null | sort -n | tail -1
@@ -58,12 +55,7 @@ systemctl restart zabbix-agent
 ### 2. Import the template into Zabbix
 
 1. Go to **Configuration → Templates → Import**
-2. Import the file:
-
-```
-Debian APT Updates by Zabbix agent.yaml
-```
-
+2. Import the file: `Debian APT Updates by Zabbix agent.yaml`
 3. Link the template to the desired hosts
 
 ---
@@ -72,8 +64,9 @@ Debian APT Updates by Zabbix agent.yaml
 
 | Item name | Description |
 |----------|-------------|
-| **APT: Available package updates** | Total number of available APT updates |
-| **APT: Available security updates** | Number of available security updates |
+| **APT: Available package updates (list)** | Raw list of upgradeable packages from `apt list --upgradable` |
+| **APT: Available security updates (count) ** | Number of updates coming from \*-security repositories |
+| **APT: Available non-security updates (count) ** | Number of updates excluding security repositories |
 | **APT: Last apt update time** | Timestamp of the last successful `apt update` |
 
 ---
@@ -93,31 +86,31 @@ Macros can be overridden at:
 ## Triggers
 
 ### APT: apt update not executed for too long
-- **Severity:** Warning  
-- **Description:**  
+- **Severity:** Warning
+- **Description:**
   The APT package index has not been updated within the configured time limit.
 
 ---
 
 ### APT: Security updates are available
-- **Severity:** Average  
-- **Description:**  
+- **Severity:** Average
+- **Description:**
   Security updates are detected repeatedly and were not installed.
 
 ---
 
 ### APT: Security updates pending for 7 days
-- **Severity:** High  
-- **Description:**  
-  Security updates have been continuously available for at least 7 days.  
-- **Depends on:**  
+- **Severity:** High
+- **Description:**
+  Security updates have been continuously available for at least 7 days.
+- **Depends on:**
   *APT: Security updates are available*
 
 ---
 
 ### APT: Non-security updates are available
-- **Severity:** Warning  
-- **Description:**  
+- **Severity:** Warning
+- **Description:**
   Non-security updates are detected repeatedly.
 
 ---

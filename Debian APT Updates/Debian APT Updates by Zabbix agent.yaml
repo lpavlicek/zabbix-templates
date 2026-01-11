@@ -11,30 +11,82 @@ zabbix_export:
         Zabbix template for monitoring available APT updates on
         Debian and Ubuntu systems using the Zabbix agent and UserParameters.
         
-        # Total number of available APT updates
-        UserParameter=apt.updates.total,apt list --upgradable 2>/dev/null | grep -c /
-        
-        # Number of available security updates (packages from *-security repositories)
-        UserParameter=apt.updates.security,apt list --upgradable 2>/dev/null | grep -i -c "/.*-security"
+        # List of available APT updates
+        UserParameter=apt.updates.total,apt list --upgradable 2>/dev/null | grep /
         
         # Timestamp of the last successful apt update
         UserParameter=apt.updates.last,stat -c %Y  /var/lib/apt/periodic/update-success-stamp  /var/lib/apt/periodic/update-stamp  /var/lib/apt/lists  /var/lib/apt/lists/partial  /var/cache/apt/pkgcache.bin  2>/dev/null | sort -n | tail -1
       vendor:
         name: lpavlicek
-        version: 7.4-2
+        version: 7.4-3
       groups:
         - name: 'lpavlicek templates'
       items:
+        - uuid: 24871758bc3240758ad9515f48aab473
+          name: 'APT: upgrade command'
+          type: DEPENDENT
+          key: apt.updates.cmd
+          value_type: TEXT
+          description: |
+            Generated APT command for upgrading currently pending packages:
+            apt-get install --only-upgrade <packages>.
+            The command is derived from the list of upgradeable packages and is provided for operational convenience only (not executed by Zabbix).
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  // Input: lines from "apt list --upgradable | grep /"
+                  // Output: apt-get install --only-upgrade pkg1 pkg2 ...
+                  
+                  if (!value) {
+                      return "";
+                  }
+                  
+                  var lines = value.trim().split(/\r?\n/);
+                  var pkgs = [];
+                  
+                  for (var i = 0; i < lines.length; i++) {
+                      var line = lines[i].trim();
+                      if (line === "") {
+                          continue;
+                      }
+                  
+                      // Format example:
+                      // docker-ce-cli/bookworm 5:29.1.4-1~debian.12~bookworm amd64 [upgradable from: ...]
+                      // We want part before the first slash: docker-ce-cli
+                  
+                      var firstField = line.split(/\s+/)[0]; // docker-ce-cli/bookworm
+                      var pkg = firstField.split("/")[0];    // docker-ce-cli
+                  
+                      if (pkg !== "") {
+                          pkgs.push(pkg);
+                      }
+                  }
+                  
+                  // Remove duplicates just in case
+                  pkgs = pkgs.filter(function(item, pos) {
+                      return pkgs.indexOf(item) === pos;
+                  });
+                  
+                  if (pkgs.length === 0) {
+                      return "";
+                  }
+                  
+                  return "apt-get install --only-upgrade " + pkgs.join(" ");
+          master_item:
+            key: apt.updates.list
+          tags:
+            - tag: component
+              value: apt
         - uuid: 689ea50428fb4f1887ad796305fca429
           name: 'APT: Last apt update time'
           key: apt.updates.last
           delay: 10m
           units: unixtime
           description: |
-            Timestamp of the last successful 'apt update' execution.
-            Used to detect outdated APT package index.
-            
-            UserParameter=apt.updates.last,stat -c %Y /var/lib/apt/periodic/update-success-stamp /var/lib/apt/periodic/update-stamp /var/lib/apt/lists /var/lib/apt/lists/partial /var/cache/apt/pkgcache.bin 2>/dev/null | sort -n | tail -1
+            UNIX timestamp of the most recent successful apt update execution.
+            Determined from APT state files under /var/lib/apt and /var/cache/apt.
+            Collected via Zabbix agent user parameter.
           tags:
             - tag: component
               value: apt
@@ -49,30 +101,115 @@ zabbix_export:
               tags:
                 - tag: scope
                   value: security
-        - uuid: 4c0480571a1f434e91a96ce82b24d7f1
-          name: 'APT: Available security updates'
-          key: apt.updates.security
+        - uuid: 41fda449d61c4a7eb38114860e153e6d
+          name: 'APT: Available package updates list'
+          key: apt.updates.list
           delay: 10m
+          value_type: TEXT
           description: |
-            Number of available APT security updates.
-            Security updates are identified based on the configured system source.
-            
-            UserParameter=apt.update.security,apt list --upgradable 2>/dev/null | grep -i -c "/.*-security"
+            Raw output of apt list --upgradable filtered to package entries.
+            This item provides the source data for all dependent items (total count, security, non-security and upgrade command).
+            Collected via Zabbix agent user parameter.
+          tags:
+            - tag: component
+              value: apt
+            - tag: stage
+              value: raw
+        - uuid: c87885d9ecbc4efc9b509b4a5231ac8e
+          name: 'APT: non-security updates (count)'
+          type: DEPENDENT
+          key: apt.updates.nonsecurity
+          description: |
+            Number of available updates excluding security repositories.
+            Calculated as all upgradeable packages minus those matching /.*-security.
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  // Count lines NOT matching: /.*-security (case-insensitive)
+                  
+                  if (!value) {
+                      return 0;
+                  }
+                  
+                  var lines = value.split(/\r?\n/);
+                  var re = /\/.*-security/i;
+                  var count = 0;
+                  
+                  for (var i = 0; i < lines.length; i++) {
+                      var line = lines[i].trim();
+                      if (line === "") {
+                          continue;
+                      }
+                  
+                      // Count only non-security lines
+                      if (!re.test(line)) {
+                          count++;
+                      }
+                  }
+                  
+                  return count;
+          master_item:
+            key: apt.updates.list
           tags:
             - tag: component
               value: apt
           triggers:
-            - uuid: f8e6ed3bf9fd4f7d8155a085c092e644
+            - uuid: a8ebae2be19647c99601127777e2c6c4
+              expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.nonsecurity,11m)>0'
+              name: 'APT: Non-security updates are available ({ITEM.LASTVALUE1} updates)'
+              priority: WARNING
+              description: |
+                Non-security package updates are available and persist across multiple checks.
+                These updates are typically operational and should be scheduled for regular maintenance.
+              tags:
+                - tag: scope
+                  value: security
+        - uuid: f5cc8b96cd384a29a95af27560634929
+          name: 'APT: security updates (count)'
+          type: DEPENDENT
+          key: apt.updates.security
+          description: |
+            Number of available updates coming from *-security repositories.
+            Counted as lines matching the pattern /.*-security (case-insensitive) in the APT upgrade list.
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  // Count lines matching: /.*-security (case-insensitive)
+                  
+                  if (!value) {
+                      return 0;
+                  }
+                  
+                  var lines = value.split(/\r?\n/);
+                  var re = /\/.*-security/i;
+                  var count = 0;
+                  
+                  for (var i = 0; i < lines.length; i++) {
+                      if (re.test(lines[i])) {
+                          count++;
+                      }
+                  }
+                  
+                  return count;
+          master_item:
+            key: apt.updates.list
+          tags:
+            - tag: component
+              value: apt
+          triggers:
+            - uuid: addbbc26510a4892bce050ac77b3eb3e
               expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.security, 11m)>0'
               name: 'APT: Security updates are available ({ITEM.LASTVALUE1} updates)'
               priority: AVERAGE
               description: |
-                Security updates have been detected repeatedly and were not installed.
-                Immediate attention is recommended.
+                One or more security updates are available and persist across multiple checks.
+                Short-lived conditions are suppressed to avoid false positives.
               tags:
                 - tag: scope
                   value: security
-            - uuid: 20340b56e8404b92b68d243f9f38ab69
+            - uuid: 661128840bf74d73a65c5e7f482ab65f
               expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.security, 7d) > 0'
               name: 'APT: Security updates pending for 7 days ({ITEM.LASTVALUE1} updates)'
               priority: HIGH
@@ -85,19 +222,6 @@ zabbix_export:
               tags:
                 - tag: scope
                   value: security
-        - uuid: c5d9a6c4f726488390743ef3038e6fa7
-          name: 'APT: Available package updates'
-          key: apt.updates.total
-          delay: 10m
-          description: |
-            Number of available APT package updates reported by the system.
-            The value includes both security and non-security updates.
-            Collected via Zabbix agent user parameter.
-            
-            UserParameter=apt.updates.total,apt list --upgradable 2>/dev/null | grep -c /
-          tags:
-            - tag: component
-              value: apt
       tags:
         - tag: component
           value: apt
@@ -105,14 +229,153 @@ zabbix_export:
         - macro: '{$APT.UPDATE.MAX.AGE}'
           value: 36h
           description: 'Maximum allowed age of the last apt update. If exceeded, a trigger is raised.'
-  triggers:
-    - uuid: 261a732c739a44e9a41c0454d09eddaf
-      expression: 'min(last(/Debian APT Updates by Zabbix agent/apt.updates.total)-last(/Debian APT Updates by Zabbix agent/apt.updates.security), 11m) > 0'
-      name: 'APT: Non-security updates are available ({ITEM.LASTVALUE1} updates)'
-      priority: WARNING
-      description: |
-        Non-security package updates have been detected repeatedly.
-        Consider installing updates during the next maintenance window.
-      tags:
-        - tag: scope
-          value: security
+      dashboards:
+        - uuid: 83ea4cc92ee245689d389d9583e62a99
+          name: APT
+          display_period: '60'
+          pages:
+            - widgets:
+                - type: item
+                  name: 'Security updates'
+                  width: '14'
+                  hide_header: 'YES'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: STRING
+                      name: description
+                      value: 'security updates'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'Debian APT Updates by Zabbix agent'
+                        key: apt.updates.security
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: INTEGER
+                      name: show.1
+                      value: '2'
+                    - type: INTEGER
+                      name: show.2
+                      value: '4'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: FF4000
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '1'
+                - type: itemhistory
+                  'y': '2'
+                  width: '72'
+                  height: '7'
+                  hide_header: 'YES'
+                  fields:
+                    - type: STRING
+                      name: columns.0.highlights.0.color
+                      value: E65660
+                    - type: STRING
+                      name: columns.0.highlights.0.pattern
+                      value: security
+                    - type: ITEM
+                      name: columns.0.itemid
+                      value:
+                        host: 'Debian APT Updates by Zabbix agent'
+                        key: apt.updates.list
+                    - type: INTEGER
+                      name: columns.0.monospace_font
+                      value: '1'
+                    - type: STRING
+                      name: columns.0.name
+                      value: 'Available updates'
+                    - type: ITEM
+                      name: columns.1.itemid
+                      value:
+                        host: 'Debian APT Updates by Zabbix agent'
+                        key: apt.updates.cmd
+                    - type: INTEGER
+                      name: columns.1.monospace_font
+                      value: '1'
+                    - type: STRING
+                      name: columns.1.name
+                      value: 'Upgrade cmd'
+                    - type: STRING
+                      name: reference
+                      value: CPTPF
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '120'
+                    - type: INTEGER
+                      name: show_column_header
+                      value: '0'
+                    - type: INTEGER
+                      name: show_lines
+                      value: '5'
+                    - type: INTEGER
+                      name: show_timestamp
+                      value: '1'
+                    - type: STRING
+                      name: time_period.from
+                      value: now-12m
+                    - type: STRING
+                      name: time_period.to
+                      value: now
+                - type: item
+                  name: 'Non-security updates'
+                  x: '14'
+                  width: '14'
+                  hide_header: 'YES'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: STRING
+                      name: description
+                      value: 'non-security updates'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'Debian APT Updates by Zabbix agent'
+                        key: apt.updates.nonsecurity
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: INTEGER
+                      name: show.1
+                      value: '2'
+                    - type: INTEGER
+                      name: show.2
+                      value: '4'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: FFBF00
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '1'
+                - type: svggraph
+                  x: '28'
+                  width: '44'
+                  hide_header: 'YES'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '9'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'APT: non-security updates (count)'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'APT: security updates (count)'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: INTEGER
+                      name: ds.0.type
+                      value: '2'
+                    - type: STRING
+                      name: reference
+                      value: QWFJA
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
