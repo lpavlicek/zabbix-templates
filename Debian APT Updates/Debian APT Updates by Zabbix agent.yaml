@@ -18,7 +18,7 @@ zabbix_export:
         UserParameter=apt.updates.last,stat -c %Y  /var/lib/apt/periodic/update-success-stamp  /var/lib/apt/periodic/update-stamp  /var/lib/apt/lists  /var/lib/apt/lists/partial  /var/cache/apt/pkgcache.bin  2>/dev/null | sort -n | tail -1
       vendor:
         name: lpavlicek
-        version: 7.4-3
+        version: 7.4-4
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -93,7 +93,8 @@ zabbix_export:
           triggers:
             - uuid: 896f5f139eba49509fdaf3b83e78d2f2
               expression: '(now()-last(/Debian APT Updates by Zabbix agent/apt.updates.last))>  {$APT.UPDATE.MAX.AGE}'
-              name: 'APT: apt update not executed for too long ({ITEM.LASTVALUE1})'
+              name: 'APT: apt update not executed for too long'
+              opdata: '{ITEM.LASTVALUE1}'
               priority: AVERAGE
               description: |
                 The APT package index has not been updated within the defined time threshold ({$APT.UPDATE.MAX.AGE}).
@@ -157,7 +158,8 @@ zabbix_export:
           triggers:
             - uuid: a8ebae2be19647c99601127777e2c6c4
               expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.nonsecurity,11m)>0'
-              name: 'APT: Non-security updates are available ({ITEM.LASTVALUE1} updates)'
+              name: 'APT: Non-security updates are available'
+              opdata: '{ITEM.LASTVALUE1} updates'
               priority: WARNING
               description: |
                 Non-security package updates are available and persist across multiple checks.
@@ -201,7 +203,8 @@ zabbix_export:
           triggers:
             - uuid: addbbc26510a4892bce050ac77b3eb3e
               expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.security, 11m)>0'
-              name: 'APT: Security updates are available ({ITEM.LASTVALUE1} updates)'
+              name: 'APT: Security updates are available'
+              opdata: '{ITEM.LASTVALUE1} updates'
               priority: AVERAGE
               description: |
                 One or more security updates are available and persist across multiple checks.
@@ -211,13 +214,14 @@ zabbix_export:
                   value: security
             - uuid: 661128840bf74d73a65c5e7f482ab65f
               expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.security, 7d) > 0'
-              name: 'APT: Security updates pending for 7 days ({ITEM.LASTVALUE1} updates)'
+              name: 'APT: Security updates pending for 7 days'
+              opdata: '{ITEM.LASTVALUE1} updates'
               priority: HIGH
               description: |
                 Security updates have been available for at least 7 days and were not installed.
                 This represents a significant security risk.
               dependencies:
-                - name: 'APT: Security updates are available ({ITEM.LASTVALUE1} updates)'
+                - name: 'APT: Security updates are available'
                   expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.security, 11m)>0'
               tags:
                 - tag: scope
