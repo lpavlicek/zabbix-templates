@@ -27,7 +27,7 @@ zabbix_export:
         Repository: https://github.com/lpavlicek/zabbix-templates
       vendor:
         name: lpavlicek
-        version: 7.4-5
+        version: 7.4-6
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -72,6 +72,7 @@ zabbix_export:
           name: 'HTTP redirect: Endpoints discovery'
           type: DEPENDENT
           key: http.redirect.discovery
+          delay: '0'
           description: 'Discovers HTTP redirect endpoints based on the comma-separated list of hostnames in {$HTTP_REDIRECT_ALIASES} macro.'
           item_prototypes:
             - uuid: dba171bb62324bd6ad5f9aff8223353b
@@ -121,9 +122,9 @@ zabbix_export:
                       value: availability
                 - uuid: a23efc30c1374a29a86d04eacca6377f
                   expression: |
-                    count(/HTTP to HTTPS Redirect Check/http.redirect.check[{#HOSTNAME}],11m,"ne","")=0
+                    count(/HTTP to HTTPS Redirect Check/http.redirect.check[{#HOSTNAME}],14m,"ne","")=0
                     and
-                    nodata(/HTTP to HTTPS Redirect Check/http.redirect.check[{#HOSTNAME}],11m)=0
+                    nodata(/HTTP to HTTPS Redirect Check/http.redirect.check[{#HOSTNAME}],14m)=0
                   name: 'HTTP redirect: No response from {#HOSTNAME} for 10 minutes'
                   priority: AVERAGE
                   description: |
@@ -141,6 +142,7 @@ zabbix_export:
               name: 'HTTP redirect: Location contains HTTPS for {#HOSTNAME}'
               type: DEPENDENT
               key: 'http.redirect.is_https[{#HOSTNAME}]'
+              delay: '0'
               description: 'Validates if the Location header in the redirect response starts with "https://". Returns 1 if HTTPS is used, 0 otherwise.'
               valuemap:
                 name: 'HTTP redirect: HTTPS validation'
@@ -163,6 +165,7 @@ zabbix_export:
               type: DEPENDENT
               key: 'http.redirect.location[{#HOSTNAME}]'
               value_type: TEXT
+              delay: '0'
               description: 'Extracts the URL from the Location header of the HTTP redirect response. Returns empty string if no Location header is present.'
               preprocessing:
                 - type: REGEX
@@ -180,6 +183,7 @@ zabbix_export:
               name: 'HTTP redirect: HTTP status code for {#HOSTNAME}'
               type: DEPENDENT
               key: 'http.redirect.status[{#HOSTNAME}]'
+              delay: '0'
               description: 'Extracts the HTTP status code from the response. Returns 0 if no valid status code is found.'
               preprocessing:
                 - type: REGEX
