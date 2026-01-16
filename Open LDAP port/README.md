@@ -23,7 +23,7 @@ Tato šablona slouží k detekci bezpečnostního rizika, kdy je LDAP server dos
 
 ### Trigger
 - **Název:** Otevřený LDAP port ({HOST.NAME})
-- **Podmínka:** Spustí se, když je port 389 dostupný (hodnota = 1)
+- **Podmínka:** Spustí se, když je port 389 dostupný (hodnota = 1) posledních 10 minut
 - **Recovery:** Automaticky se vyřeší, když port není dostupný (hodnota = 0)
 
 ## Bezpečnostní kontext

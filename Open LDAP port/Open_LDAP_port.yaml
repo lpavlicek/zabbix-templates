@@ -7,10 +7,13 @@ zabbix_export:
     - uuid: 950e7de10dab4538bb633f92ce0b1e27
       template: 'Open LDAP port'
       name: 'Otevřený LDAP port'
-      description: 'Port pro nešifrovaný LDAP (389/tcp) by neměl být dostupný ze sítě (ze Zabbix serveru/proxy)'
+      description: |
+        Port pro nešifrovaný LDAP (389/tcp) by neměl být dostupný ze sítě (ze Zabbix serveru/proxy)
+        
+        Trigger se spustí, pokud je nešifrovaný port dostupný 10 minut (odolnot vůči krátkodobým výpadkům spojení).
       vendor:
         name: lpavlicek
-        version: 7.4-2
+        version: 7.4-3
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -27,7 +30,7 @@ zabbix_export:
               value: ldap
           triggers:
             - uuid: c472b1666a6943509148b0211dad02ab
-              expression: 'last(/Open LDAP port/net.tcp.service[ldap,,])=1'
+              expression: 'min(/Open LDAP port/net.tcp.service[ldap,,],10m)=1'
               recovery_mode: RECOVERY_EXPRESSION
               recovery_expression: 'last(/Open LDAP port/net.tcp.service[ldap,,])=0'
               name: 'Otevřený LDAP port ({HOST.NAME})'
