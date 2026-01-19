@@ -35,7 +35,7 @@ Add the following UserParameters to the Zabbix agent configuration
 
 ```ini
 UserParameter=timedatectl.timezone,timedatectl show -p Timezone --value
-UserParameter=timedatectl.ntp,timedatectl show -p NTPSynchronized --value
+UserParameter=timedatectl.ntpsynchronized,timedatectl show -p NTPSynchronized --value
 ```
 
 Restart the Zabbix agent after applying the configuration:
@@ -50,10 +50,10 @@ systemctl restart zabbix-agent
 
 ### Items
 
-| Name                       | Key                  | Type    |
-|----------------------------|----------------------|---------|
-| System timezone            | timedatectl.timezone | Text    |
-| NTP synchronization status | timedatectl.ntp      | Numeric |
+| Name                       | Key                         | Type  |
+|----------------------------|-----------------------------|-------|
+| System timezone            | timedatectl.timezone        | Text  |
+| NTP synchronization status | timedatectl.ntpsynchronized | Text  |
 
 ---
 

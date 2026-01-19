@@ -8,7 +8,7 @@ zabbix_export:
       template: 'System Timezone and NTP by Zabbix agent'
       name: 'System Timezone and NTP by Zabbix agent'
       description: |
-        onitors system time configuration on Linux hosts.
+        Monitors system time configuration on Linux hosts.
         
         The template verifies:
         - Configured system timezone
@@ -18,7 +18,7 @@ zabbix_export:
         `timedatectl` command.
       vendor:
         name: lpavlicek
-        version: 7.4-2
+        version: 7.4-3
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -36,6 +36,10 @@ zabbix_export:
             Returned values:
             - yes = synchronized
             - no = not synchronized
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
           tags:
             - tag: component
               value: time
@@ -45,6 +49,7 @@ zabbix_export:
               name: 'System time is not synchronized via NTP'
               priority: AVERAGE
               description: 'The system reports that NTP is not synchronized (timedatectl NTPSynchronized != yes).'
+              manual_close: 'YES'
               tags:
                 - tag: scope
                   value: availability
@@ -58,6 +63,10 @@ zabbix_export:
             
             The value is obtained using:
             timedatectl show -p Timezone --value
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
           tags:
             - tag: component
               value: time
@@ -67,6 +76,7 @@ zabbix_export:
               name: 'Unexpected system timezone'
               priority: AVERAGE
               description: 'System timezone {ITEM.LASTVALUE1} differs from the expected value {$TIME.EXPECTED.TZ}.'
+              manual_close: 'YES'
               tags:
                 - tag: scope
                   value: availability
