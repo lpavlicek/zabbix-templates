@@ -16,12 +16,99 @@ zabbix_export:
         
         # Timestamp of the last successful apt update
         UserParameter=apt.updates.last,stat -c %Y  /var/lib/apt/periodic/update-success-stamp  /var/lib/apt/periodic/update-stamp  /var/lib/apt/lists  /var/lib/apt/lists/partial  /var/cache/apt/pkgcache.bin  2>/dev/null | sort -n | tail -1
+        
+        # List of locally installed packages obtained using a script apt_list_local
+        UserParameter=apt.packages.local,/etc/zabbix/scripts/apt/apt_list_local
       vendor:
         name: lpavlicek
-        version: 7.4-4
+        version: 7.4-5
       groups:
         - name: 'lpavlicek templates'
       items:
+        - uuid: 5e28e90d57924154adac807a864ad3c7
+          name: 'APT: list local packages'
+          key: apt.packages.local
+          delay: 10m
+          value_type: TEXT
+          description: |
+            List of local packages, i.e., packages installed manually or packages installed from discontinued repositories. 
+            Example output obtained via the apt.list.local user parameter:
+            synology-active-backup-business-linux-service local hold
+            synosnap local hold
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 4h
+          tags:
+            - tag: component
+              value: apt
+            - tag: stage
+              value: raw
+        - uuid: 3bed1e2f9f304d18a8681e6b39fecd9b
+          name: 'APT: local packages (count)'
+          type: DEPENDENT
+          key: apt.packages.local.count
+          description: 'The number of local packages, i.e., packages installed manually or packages installed from deprecated repositories.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  // Rozdělení textu na pole řádků
+                  var lines = value.split('\n');
+                  var count = 0;
+                  
+                  for (var i = 0; i < lines.length; i++) {
+                      // Kontrola, zda řádek obsahuje podřetězec ' local '
+                      if (lines[i].indexOf(' local ') !== -1) {
+                          count++;
+                      }
+                  }
+                  
+                  return count;
+          master_item:
+            key: apt.packages.local
+          tags:
+            - tag: component
+              value: apt
+        - uuid: ff051473bc6544df9ebd93d5f39123e4
+          name: 'APT: local packages without hold (count)'
+          type: DEPENDENT
+          key: apt.packages.local.count.nohold
+          description: 'The number of local packages without the hold flag. If it is greater than zero, the trigger is activated.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  // Rozdělení vstupu na řádky a filtrace
+                  var lines = value.split('\n');
+                  var count = 0;
+                  
+                  for (var i = 0; i < lines.length; i++) {
+                      // Kontrola, zda řádek končí textem ' no_hold' 
+                      // (odstraníme i případné neviditelné znaky na konci jako \r)
+                      if (lines[i].trim().endsWith(' no_hold')) {
+                          count++;
+                      }
+                  }
+                  
+                  return count;
+          master_item:
+            key: apt.packages.local
+          tags:
+            - tag: component
+              value: apt
+          triggers:
+            - uuid: 7fba924edc0c4b659e3d1d612b6c53f8
+              expression: 'last(/Debian APT Updates by Zabbix agent/apt.packages.local.count.nohold) > 0'
+              name: 'APT: Local packages are installed'
+              opdata: '{ITEM.LASTVALUE1} packages'
+              priority: INFO
+              description: |
+                The server contains manually installed packages or packages from removed apt repositories. This often results in outdated packages without security updates.
+                Packages marked with hold are not counted.
+              tags:
+                - tag: component
+                  value: apt
         - uuid: 24871758bc3240758ad9515f48aab473
           name: 'APT: upgrade command'
           type: DEPENDENT
@@ -79,7 +166,7 @@ zabbix_export:
             - tag: component
               value: apt
         - uuid: 689ea50428fb4f1887ad796305fca429
-          name: 'APT: Last apt update time'
+          name: 'APT: last apt update time'
           key: apt.updates.last
           delay: 10m
           units: unixtime
@@ -103,7 +190,7 @@ zabbix_export:
                 - tag: scope
                   value: security
         - uuid: 41fda449d61c4a7eb38114860e153e6d
-          name: 'APT: Available package updates list'
+          name: 'APT: available package updates list'
           key: apt.updates.list
           delay: 10m
           value_type: TEXT
@@ -111,6 +198,10 @@ zabbix_export:
             Raw output of apt list --upgradable filtered to package entries.
             This item provides the source data for all dependent items (total count, security, non-security and upgrade command).
             Collected via Zabbix agent user parameter.
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 4h
           tags:
             - tag: component
               value: apt
@@ -241,7 +332,7 @@ zabbix_export:
             - widgets:
                 - type: item
                   name: 'Security updates'
-                  width: '14'
+                  width: '11'
                   hide_header: 'YES'
                   fields:
                     - type: INTEGER
@@ -266,19 +357,19 @@ zabbix_export:
                       value: '4'
                     - type: STRING
                       name: thresholds.0.color
-                      value: FF4000
+                      value: FFCDD2
                     - type: STRING
                       name: thresholds.0.threshold
                       value: '1'
                 - type: itemhistory
                   'y': '2'
                   width: '72'
-                  height: '7'
+                  height: '5'
                   hide_header: 'YES'
                   fields:
                     - type: STRING
                       name: columns.0.highlights.0.color
-                      value: E65660
+                      value: FFCCBC
                     - type: STRING
                       name: columns.0.highlights.0.pattern
                       value: security
@@ -293,6 +384,12 @@ zabbix_export:
                     - type: STRING
                       name: columns.0.name
                       value: 'Available updates'
+                    - type: STRING
+                      name: columns.1.highlights.0.color
+                      value: FFE0B2
+                    - type: STRING
+                      name: columns.1.highlights.0.pattern
+                      value: apt
                     - type: ITEM
                       name: columns.1.itemid
                       value:
@@ -305,6 +402,23 @@ zabbix_export:
                       name: columns.1.name
                       value: 'Upgrade cmd'
                     - type: STRING
+                      name: columns.2.highlights.0.color
+                      value: B2EBF2
+                    - type: STRING
+                      name: columns.2.highlights.0.pattern
+                      value: no_hold
+                    - type: ITEM
+                      name: columns.2.itemid
+                      value:
+                        host: 'Debian APT Updates by Zabbix agent'
+                        key: apt.packages.local
+                    - type: INTEGER
+                      name: columns.2.monospace_font
+                      value: '1'
+                    - type: STRING
+                      name: columns.2.name
+                      value: 'Local packages'
+                    - type: STRING
                       name: reference
                       value: CPTPF
                     - type: INTEGER
@@ -315,20 +429,20 @@ zabbix_export:
                       value: '0'
                     - type: INTEGER
                       name: show_lines
-                      value: '5'
+                      value: '3'
                     - type: INTEGER
                       name: show_timestamp
                       value: '1'
                     - type: STRING
                       name: time_period.from
-                      value: now-12m
+                      value: now-4h
                     - type: STRING
                       name: time_period.to
                       value: now
                 - type: item
                   name: 'Non-security updates'
-                  x: '14'
-                  width: '14'
+                  x: '11'
+                  width: '11'
                   hide_header: 'YES'
                   fields:
                     - type: INTEGER
@@ -353,30 +467,98 @@ zabbix_export:
                       value: '4'
                     - type: STRING
                       name: thresholds.0.color
-                      value: FFBF00
+                      value: FFE0B2
                     - type: STRING
                       name: thresholds.0.threshold
                       value: '1'
-                - type: svggraph
-                  x: '28'
-                  width: '44'
+                - type: item
+                  name: 'Local packages'
+                  x: '22'
+                  width: '11'
                   hide_header: 'YES'
                   fields:
                     - type: INTEGER
-                      name: ds.0.color_palette
-                      value: '9'
+                      name: aggregate_function
+                      value: '7'
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: STRING
+                      name: description
+                      value: 'local packages'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'Debian APT Updates by Zabbix agent'
+                        key: apt.packages.local.count.nohold
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: INTEGER
+                      name: show.1
+                      value: '2'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: B2EBF2
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '1'
+                    - type: INTEGER
+                      name: units_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: units_show
+                      value: '0'
+                - type: svggraph
+                  x: '33'
+                  width: '39'
+                  hide_header: 'YES'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: E57373
                     - type: STRING
                       name: ds.0.items.0
-                      value: 'APT: non-security updates (count)'
-                    - type: STRING
-                      name: ds.0.items.1
                       value: 'APT: security updates (count)'
+                    - type: INTEGER
+                      name: ds.0.missingdatafunc
+                      value: '3'
                     - type: INTEGER
                       name: ds.0.stacked
                       value: '1'
                     - type: INTEGER
                       name: ds.0.type
                       value: '2'
+                    - type: STRING
+                      name: ds.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'APT: non-security updates (count)'
+                    - type: INTEGER
+                      name: ds.1.missingdatafunc
+                      value: '3'
+                    - type: INTEGER
+                      name: ds.1.stacked
+                      value: '1'
+                    - type: INTEGER
+                      name: ds.1.type
+                      value: '2'
+                    - type: INTEGER
+                      name: ds.2.aggregate_function
+                      value: '3'
+                    - type: STRING
+                      name: ds.2.color
+                      value: B2EBF2
+                    - type: STRING
+                      name: ds.2.items.0
+                      value: 'APT: local packages without hold (count)'
+                    - type: INTEGER
+                      name: ds.2.stacked
+                      value: '1'
+                    - type: INTEGER
+                      name: ds.2.type
+                      value: '3'
                     - type: STRING
                       name: reference
                       value: QWFJA

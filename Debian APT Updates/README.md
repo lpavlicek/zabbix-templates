@@ -8,7 +8,8 @@ The template monitors:
 - number of **non-security** updates,
 - time of the last successful `apt update`,
 - optional generated upgrade command for pending packages,
-- long-pending security updates with escalation.
+- long-pending security updates with escalation,
+- number of **local** installed packages.
 
 Designed and tested with **Zabbix 7.4**.
 
@@ -20,7 +21,9 @@ Designed and tested with **Zabbix 7.4**.
 - Zabbix agent (passive or active)
 - Ability to execute:
   - `apt list --upgradable`
-  - read access to APT state files under `/var/lib/apt` and `/var/cache/apt`
+  - `apt list --installed`
+  - `apt-mark showhold`
+- Read access to APT state files under `/var/lib/apt` and `/var/cache/apt`
 
 ---
 
@@ -42,6 +45,9 @@ UserParameter=apt.updates.total,apt list --upgradable 2>/dev/null | grep /
 
 # Timestamp of the last successful apt update
 UserParameter=apt.updates.last,stat -c %Y  /var/lib/apt/periodic/update-success-stamp  /var/lib/apt/periodic/update-stamp  /var/lib/apt/lists  /var/lib/apt/lists/partial  /var/cache/apt/pkgcache.bin  2>/dev/null | sort -n | tail -1
+
+# List of locally installed packages
+UserParameter=apt.packages.local,/etc/zabbix/scripts/apt/apt_list_local
 ```
 
 Restart the Zabbix agent:
@@ -52,7 +58,19 @@ systemctl restart zabbix-agent
 
 ---
 
-### 2. Import the template into Zabbix
+### 2. Script Installation
+
+Copy the script to the monitored host:
+```bash
+mkdir -p /etc/zabbix/scripts/apt
+cp apt_list_local /etc/zabbix/scripts/apt/apt_list_local
+chmod +x /etc/zabbix/scripts/apt/apt_list_local
+chown zabbix:zabbix /etc/zabbix/scripts/apt/apt_list_local
+```
+
+---
+
+### 3. Import the template into Zabbix
 
 1. Go to **Configuration → Templates → Import**
 2. Import the file: `Debian APT Updates by Zabbix agent.yaml`
@@ -68,6 +86,10 @@ systemctl restart zabbix-agent
 | **APT: Available security updates (count) ** | Number of updates coming from \*-security repositories |
 | **APT: Available non-security updates (count) ** | Number of updates excluding security repositories |
 | **APT: Last apt update time** | Timestamp of the last successful `apt update` |
+| **APT: list local packages** | Manually installed or orphaned packages |
+| **APT: local packages (count)** | Total count of local packages |
+| **APT: local packages without hold (count)** | Local packages not marked as held |
+| **APT: upgrade command** | Generated apt-get command for pending updates |
 
 ---
 

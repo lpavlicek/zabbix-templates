@@ -1,0 +1,36 @@
+#!/bin/bash
+set -euo pipefail
+
+# Check if required commands exist
+for cmd in apt apt-mark; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "Error: $cmd not found" >&2
+        exit 1
+    fi
+done
+
+# Read all locally installed packages into array
+mapfile -t local_packages < <(apt list --installed 2>/dev/null | grep '\[installed,local\]' | cut -d/ -f1)
+
+# Return empty output if no local packages found
+if [[ ${#local_packages[@]} -eq 0 ]]; then
+    echo ""
+    exit 0
+fi
+
+# Create associative array of held packages
+declare -A hold_packages
+while IFS= read -r pkg; do
+    hold_packages["$pkg"]=1
+done < <(apt-mark showhold)
+
+# Print each local package with its hold status
+for pkg in "${local_packages[@]}"; do
+    if [[ -n "${hold_packages[$pkg]}" ]]; then
+        hold_status="hold"
+    else
+        hold_status="no_hold"
+    fi
+    
+    printf '%s local %s\n' "$pkg" "$hold_status"
+done
