@@ -30,7 +30,7 @@ zabbix_export:
               4. Adjust {$SSLSCAN.CERT.EXPIRATION.WARN} if needed (default: 7 days)
       vendor:
         name: lpavlicek
-        version: 7.4-2
+        version: 7.4-3
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -38,7 +38,7 @@ zabbix_export:
           name: 'TLS sslscan Hostnames List'
           type: CALCULATED
           key: sslscan.hostnames
-          delay: 1h
+          delay: 5m
           value_type: TEXT
           params: 'concat("{$SSLSCAN.TARGETS}","")'
           description: |
@@ -50,6 +50,10 @@ zabbix_export:
             Example: www.example.cz:443,db.example.cz:5432,mail.example.cz:25
             
             The discovery rule will automatically create monitoring items for each target.
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 4h
           tags:
             - tag: component
               value: sslscan
@@ -73,6 +77,9 @@ zabbix_export:
                 - '-1'
               error_handler: CUSTOM_VALUE
               error_handler_params: '9'
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 20m
           tags:
             - tag: component
               value: sslscan
@@ -166,7 +173,7 @@ zabbix_export:
                   value: sslscan
               trigger_prototypes:
                 - uuid: 96b827437f174b2bb054ce13fd2706bf
-                  expression: 'last(/TLS sslscan Monitoring/sslscan.cert.daysuntilexpiration[{#TARGET}]) > 9990'
+                  expression: 'between(last(/TLS sslscan Monitoring/sslscan.cert.daysuntilexpiration[{#TARGET}]),9990,9998)=1'
                   name: 'Error in parsing expiration date for {#TARGET}'
                   priority: WARNING
             - uuid: 1dfc04e7fd9b4d46bbe85c6168355e1e
@@ -442,6 +449,10 @@ zabbix_export:
                 This item aggregates all security issues detected on the target and returns the highest severity level found.
               valuemap:
                 name: overall.severity
+              preprocessing:
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 15m
               tags:
                 - tag: component
                   value: sslscan
@@ -593,6 +604,10 @@ zabbix_export:
                     
                 Command executed:
                 sslscan --xml=- --timeout=2 --connection-timeout=2 --no-renegotiation --no-heartbleed --no-groups --no-compression --no-ciphersuites --tlsall --no-cipher-details {#STARTTLS} {#TARGET}
+              preprocessing:
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
               tags:
                 - tag: component
                   value: sslscan
