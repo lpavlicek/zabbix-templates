@@ -21,7 +21,7 @@ zabbix_export:
         UserParameter=apt.packages.local,/etc/zabbix/scripts/apt/apt_list_local
       vendor:
         name: lpavlicek
-        version: 7.4-5
+        version: 7.4-6
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -106,6 +106,7 @@ zabbix_export:
               description: |
                 The server contains manually installed packages or packages from removed apt repositories. This often results in outdated packages without security updates.
                 Packages marked with hold are not counted.
+              manual_close: 'YES'
               tags:
                 - tag: component
                   value: apt
@@ -248,13 +249,14 @@ zabbix_export:
               value: apt
           triggers:
             - uuid: a8ebae2be19647c99601127777e2c6c4
-              expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.nonsecurity,11m)>0'
+              expression: 'last(/Debian APT Updates by Zabbix agent/apt.updates.nonsecurity)>0'
               name: 'APT: Non-security updates are available'
               opdata: '{ITEM.LASTVALUE1} updates'
               priority: WARNING
               description: |
                 Non-security package updates are available and persist across multiple checks.
                 These updates are typically operational and should be scheduled for regular maintenance.
+              manual_close: 'YES'
               tags:
                 - tag: scope
                   value: security
@@ -293,13 +295,14 @@ zabbix_export:
               value: apt
           triggers:
             - uuid: addbbc26510a4892bce050ac77b3eb3e
-              expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.security, 11m)>0'
+              expression: 'last(/Debian APT Updates by Zabbix agent/apt.updates.security)>0'
               name: 'APT: Security updates are available'
               opdata: '{ITEM.LASTVALUE1} updates'
               priority: AVERAGE
               description: |
                 One or more security updates are available and persist across multiple checks.
                 Short-lived conditions are suppressed to avoid false positives.
+              manual_close: 'YES'
               tags:
                 - tag: scope
                   value: security
@@ -313,7 +316,7 @@ zabbix_export:
                 This represents a significant security risk.
               dependencies:
                 - name: 'APT: Security updates are available'
-                  expression: 'min(/Debian APT Updates by Zabbix agent/apt.updates.security, 11m)>0'
+                  expression: 'last(/Debian APT Updates by Zabbix agent/apt.updates.security)>0'
               tags:
                 - tag: scope
                   value: security
