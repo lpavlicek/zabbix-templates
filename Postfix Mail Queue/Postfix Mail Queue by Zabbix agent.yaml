@@ -10,7 +10,7 @@ zabbix_export:
       description: 'Zabbix template for monitoring the size of the Postfix mail queue using the `mailq` command. The template collects data via a Zabbix agent UserParameter and raises a trigger when the number of queued messages exceeds a defined limit.'
       vendor:
         name: lpavlicek
-        version: 7.4-2
+        version: 7.4-3
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -27,6 +27,10 @@ zabbix_export:
             UserParameter example:
             
             UserParameter=postfix.queue, mailq | grep -c '^[0-9A-F]'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 30m
           tags:
             - tag: component
               value: smtp
