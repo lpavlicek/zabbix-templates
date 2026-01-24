@@ -37,7 +37,7 @@ zabbix_export:
         {#DEPRECATED} — 1/0 (výchozí 0),
       vendor:
         name: lpavlicek
-        version: 7.4-1
+        version: 7.4-2
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -357,7 +357,7 @@ zabbix_export:
                   recovery_mode: RECOVERY_EXPRESSION
                   recovery_expression: 'last(/HTTP headers/http.headers.statuscode[{#URL}])<400'
                   name: 'HTTP error status {ITEM.LASTVALUE} on {#URL}'
-                  opdata: 'last(/HTTP headers/http.headers.statuscode[{#URL}])'
+                  opdata: '{ITEM.LASTVALUE1}'
                   priority: AVERAGE
                   description: 'see https://en.wikipedia.org/wiki/List_of_HTTP_status_codes'
                   dependencies:
@@ -448,7 +448,7 @@ zabbix_export:
                   recovery_mode: RECOVERY_EXPRESSION
                   recovery_expression: 'length(last(/HTTP headers/http.headers.xframeoption[{#URL}]))=0 or ({#DEPRECATED}="0")'
                   name: 'X-Frame-Options is deprecated, but exists on {#URL}'
-                  opdata: 'last(/HTTP headers/http.headers.xframeoption[{#URL}])'
+                  opdata: '{ITEM.LASTVALUE1}'
                   priority: WARNING
                   description: |
                     X-Frame-Options header is deprecated, prefer directive frame-ancestors in CSP header.
