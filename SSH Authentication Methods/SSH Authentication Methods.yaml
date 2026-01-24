@@ -27,7 +27,11 @@ zabbix_export:
           name: 'SSH available'
           type: SIMPLE
           key: 'net.tcp.service[ssh,,{$SSH.PORT}]'
-          delay: 5m
+          delay: 3m
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 15m
           tags:
             - tag: component
               value: ssh
@@ -388,8 +392,13 @@ zabbix_export:
           name: 'SSH status'
           type: CALCULATED
           key: ssh_status
+          delay: 2m
           params: '(1 - last(//net.tcp.service[ssh,,{$SSH.PORT}])) + ( 2 * last(//ssh.password_auth.count))'
           description: 'Výpočet stavu pro zobrazení barev na honeycomb grafu.'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 30m
           tags:
             - tag: component
               value: ssh
