@@ -10,7 +10,7 @@ zabbix_export:
       description: 'Monitorování využití S3 kompatibilního úložiště pomocí s3cmd'
       vendor:
         name: lpavlicek
-        version: 7.4-1
+        version: 7.4-2
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -23,6 +23,13 @@ zabbix_export:
           units: '%'
           params: 'last(//s3.total.objects)*100/{$S3.MAX_OBJECTS}'
           description: 'Procentuální využití maximálního počtu objektů'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          tags:
+            - tag: component
+              value: s3_storage
           triggers:
             - uuid: 4b9deef2990f46f1a9aac1cb6bb37fd9
               expression: 'last(/S3 Storage Usage/s3.objects.percent)>{$S3.HIGH_PERCENT}'
@@ -33,7 +40,7 @@ zabbix_export:
                 - tag: component
                   value: storage
                 - tag: scope
-                  value: objects
+                  value: capacity
             - uuid: b9a03b758a4541e59af7da8582222137
               expression: 'last(/S3 Storage Usage/s3.objects.percent)>{$S3.WARNING_PERCENT}'
               name: 'S3 Objects count is high ({ITEM.LASTVALUE}%)'
@@ -44,7 +51,7 @@ zabbix_export:
                 - tag: component
                   value: storage
                 - tag: scope
-                  value: objects
+                  value: capacity
         - uuid: 1fbd1f58f0fe47139159756478f44385
           name: 'S3 Total Usage (bytes)'
           type: DEPENDENT
@@ -60,6 +67,9 @@ zabbix_export:
               error_handler_params: '0'
           master_item:
             key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+          tags:
+            - tag: coomponent
+              value: s3_storage
         - uuid: c3b63d8808114fe09f01e94f4557c47b
           name: 'S3 Total Objects Count'
           type: DEPENDENT
@@ -85,6 +95,9 @@ zabbix_export:
                   return totalObjects;
           master_item:
             key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+          tags:
+            - tag: component
+              value: s3_storage
         - uuid: 22c430cfbc434940bb86e9e7bb6c8037
           name: 'S3 Storage Usage Percentage'
           type: CALCULATED
@@ -94,6 +107,13 @@ zabbix_export:
           units: '%'
           params: 'last(//s3.total.bytes)*100/{$S3.MAX_CAPACITY}'
           description: 'Procentuální využití kapacity úložiště'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          tags:
+            - tag: component
+              value: s3_storage
           triggers:
             - uuid: 35028d8c907045d299f672847093afd8
               expression: 'last(/S3 Storage Usage/s3.usage.percent)>{$S3.HIGH_PERCENT}'
@@ -125,6 +145,9 @@ zabbix_export:
           value_type: TEXT
           description: 'Raw výstup z příkazu s3cmd du'
           timeout: 6s
+          tags:
+            - tag: component
+              value: s3_storage
           triggers:
             - uuid: 9ec75316541a43bfb69b5161d9a14919
               expression: 'find(/S3 Storage Usage/s3_usage_check.sh[{$S3.CONFIG_FILE}],,"regexp","ERROR:")=1'
@@ -155,6 +178,9 @@ zabbix_export:
                     - \1
               master_item:
                 key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+              tags:
+                - tag: component
+                  value: s3_storage
             - uuid: 24ffe95e4c4b47e88c5fe6200ca467a0
               name: 'S3 Bucket [{#BUCKET_NAME}] Size (bytes)'
               type: DEPENDENT
@@ -170,6 +196,9 @@ zabbix_export:
                   error_handler_params: '0'
               master_item:
                 key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+              tags:
+                - tag: component
+                  value: s3_storage
           graph_prototypes:
             - uuid: a30662cb34eb45c5ad9b8000f0cf9188
               name: 'S3 Bucket [{#BUCKET_NAME}] Objects'
@@ -215,6 +244,9 @@ zabbix_export:
                   }
                                     
                   return JSON.stringify(buckets);
+      tags:
+        - tag: component
+          value: storage
       macros:
         - macro: '{$S3.CONFIG_FILE}'
           value: /etc/zabbix/external_scripts.d/s3_usage.cfg
