@@ -13,7 +13,7 @@ zabbix_export:
         Trigger se spustí, pokud je nešifrovaný port dostupný 10 minut (odolnot vůči krátkodobým výpadkům spojení).
       vendor:
         name: lpavlicek
-        version: 7.4-3
+        version: 7.4-4
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -25,6 +25,10 @@ zabbix_export:
           description: 'test zda je otevřen LDAP port'
           valuemap:
             name: 'Otevřen LDAP port 389'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
           tags:
             - tag: component
               value: ldap
