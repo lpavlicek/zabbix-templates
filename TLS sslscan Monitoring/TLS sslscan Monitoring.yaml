@@ -30,7 +30,7 @@ zabbix_export:
               4. Adjust {$SSLSCAN.CERT.EXPIRATION.WARN} if needed (default: 7 days)
       vendor:
         name: lpavlicek
-        version: 7.4-3
+        version: 7.4-5
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -315,7 +315,6 @@ zabbix_export:
                   parameters:
                     - string(/document/ssltest/certificates/certificate/pk/@type)
                   error_handler: CUSTOM_VALUE
-                  error_handler_params: UNKNOWN
               master_item:
                 key: 'sslscan_check.sh[{#TARGET},{#STARTTLS}]'
               tags:
@@ -608,6 +607,7 @@ zabbix_export:
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
+              timeout: 6s
               tags:
                 - tag: component
                   value: sslscan
@@ -640,7 +640,7 @@ zabbix_export:
                       or 
                       (last(/TLS sslscan Monitoring/sslscan.cert.keytype[{#TARGET}])<>"RSA" 
                       and last(/TLS sslscan Monitoring/sslscan.cert.keytype[{#TARGET}])<>"EC" 
-                      and last(/TLS sslscan Monitoring/sslscan.cert.keytype[{#TARGET}])<>"UNKNOWN")
+                      and last(/TLS sslscan Monitoring/sslscan.cert.keybits[{#TARGET}])>0)
               recovery_mode: RECOVERY_EXPRESSION
               recovery_expression: |
                 (last(/TLS sslscan Monitoring/sslscan.cert.keytype[{#TARGET}])="RSA" 
