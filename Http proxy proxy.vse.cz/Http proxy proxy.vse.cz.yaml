@@ -1,0 +1,253 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: fb6b12c508c44be68193e518fe8fb3bd
+      template: 'Http proxy proxy.vse.cz'
+      name: 'Http proxy proxy.vse.cz'
+      description: 'Testování pravidel na proxy.vse.cz'
+      vendor:
+        name: lpavlicek
+        version: 7.4-2
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 50c69285437c4c3e8ef709ce062878b1
+          name: 'Proxy: port 3128 - debian.org ano'
+          type: HTTP_AGENT
+          key: proxy.3128.allow.debian.org
+          delay: 5m
+          description: |
+            na portu 3128 jsou dostupné jen vybrané služby:
+            - windowsupdate,
+            - aktualizace debianu/ubuntu,
+            - aktualizace synology,
+            a další ...
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '^HTTP\S+ (\d+) [A-Za-z0-9 ]+.*'
+                - \1
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          url: 'http://debian.org'
+          follow_redirects: 'NO'
+          http_proxy: 'http://{$PROXY_HOST}:3128/'
+          retrieve_mode: HEADERS
+          request_method: HEAD
+          tags:
+            - tag: component
+              value: proxy
+          triggers:
+            - uuid: 8416c8c7108742a2885daa69ba3bc0be
+              expression: 'last(/Http proxy proxy.vse.cz/proxy.3128.allow.debian.org)=403'
+              name: 'Proxy: Není dostupné http://www.debian.org přes {$PROXY_HOST}:3128'
+              priority: WARNING
+              description: |
+                Proxy: Není dostupné http://www.debian.org přes {$PROXY_HOST}:3128
+                proxy server vrací 403 Forbidden
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Proxy: Proxy server {$PROXY_HOST}:3128 nevrací odpověď či chyba při parsování'
+                  expression: |
+                    last(/Http proxy proxy.vse.cz/proxy.3128.allow.debian.org) = 0
+                    or
+                    last(/Http proxy proxy.vse.cz/proxy.3128.block.google.com) = 0
+                    
+                    or 
+                    
+                    nodata(/Http proxy proxy.vse.cz/proxy.3128.allow.debian.org, 2h) = 1
+                    or
+                    nodata(/Http proxy proxy.vse.cz/proxy.3128.block.google.com, 2h) = 1
+              tags:
+                - tag: component
+                  value: proxy
+        - uuid: d2b451af98d24c7988da145a4a462da5
+          name: 'Proxy: port 3128 - google.com ne'
+          type: HTTP_AGENT
+          key: proxy.3128.block.google.com
+          delay: 5m
+          description: |
+            na portu 3128 jsou dostupné jen vybrané služby:
+            - windowsupdate,
+            - aktualizace debianu/ubuntu,
+            - aktualizace synology,
+            a další ...
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '^HTTP\S+ (\d+) [A-Za-z0-9 ]+.*'
+                - \1
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          url: 'http://google.com'
+          follow_redirects: 'NO'
+          http_proxy: 'http://{$PROXY_HOST}:3128/'
+          retrieve_mode: HEADERS
+          request_method: HEAD
+          tags:
+            - tag: component
+              value: proxy
+          triggers:
+            - uuid: 7fedd8ba9a75421b982203cf5d48a895
+              expression: 'last(/Http proxy proxy.vse.cz/proxy.3128.block.google.com)<>403'
+              name: 'Proxy: Je chybně dostupný http://google.com přes {$PROXY_HOST}:3128'
+              priority: WARNING
+              description: |
+                Proxy: Je chybně dostupný http://google.com přes {$PROXY_HOST}:3128
+                má vracet http code 403, vrací {ITEM.VALUE}
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Proxy: Proxy server {$PROXY_HOST}:3128 nevrací odpověď či chyba při parsování'
+                  expression: |
+                    last(/Http proxy proxy.vse.cz/proxy.3128.allow.debian.org) = 0
+                    or
+                    last(/Http proxy proxy.vse.cz/proxy.3128.block.google.com) = 0
+                    
+                    or 
+                    
+                    nodata(/Http proxy proxy.vse.cz/proxy.3128.allow.debian.org, 2h) = 1
+                    or
+                    nodata(/Http proxy proxy.vse.cz/proxy.3128.block.google.com, 2h) = 1
+              tags:
+                - tag: component
+                  value: proxy
+        - uuid: 7b2749df9ab143e8b3151a4fa18f63df
+          name: 'Proxy: port 8080 - wikipedia.cz ano'
+          type: HTTP_AGENT
+          key: proxy.8080.allow.wikipedia.cz
+          delay: 5m
+          description: 'na portu 8080 by mělo být dostupné vše s výjimkou sociálních sítí, porna a her'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '^HTTP\S+ (\d+) [A-Za-z0-9 ]+.*'
+                - \1
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          url: 'http://wikipedia.cz/'
+          follow_redirects: 'NO'
+          http_proxy: 'http://{$PROXY_HOST}:8080/'
+          retrieve_mode: HEADERS
+          request_method: HEAD
+          tags:
+            - tag: component
+              value: proxy
+          triggers:
+            - uuid: 588bd9da124d478f94bc37b6412bab6b
+              expression: 'last(/Http proxy proxy.vse.cz/proxy.8080.allow.wikipedia.cz)=403'
+              name: 'Proxy: Není dostupné http://wikipedia.cz přes {$PROXY_HOST}:8080'
+              priority: WARNING
+              description: |
+                Proxy: Není dostupné http://wikipedia.cz přes {$PROXY_HOST}:8080
+                proxy server vrací 403 Forbidden
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Proxy: Proxy server {$PROXY_HOST}:8080 nevrací odpověď či chyba při parsování'
+                  expression: |
+                    last(/Http proxy proxy.vse.cz/proxy.8080.allow.wikipedia.cz)=0
+                    or last(/Http proxy proxy.vse.cz/proxy.8080.block.facebook.com)=0
+                    
+                    or
+                    
+                    nodata(/Http proxy proxy.vse.cz/proxy.8080.allow.wikipedia.cz, 2h)=1
+                    or nodata(/Http proxy proxy.vse.cz/proxy.8080.block.facebook.com, 2h)=1
+              tags:
+                - tag: component
+                  value: proxy
+        - uuid: 0fbb7e4c6fed4e9ab79dccb886f09d9c
+          name: 'Proxy: port 8080 - facebook.com ne'
+          type: HTTP_AGENT
+          key: proxy.8080.block.facebook.com
+          delay: 5m
+          description: 'přes port 8080 nejsou dostupné sociální sítě, porno, hry'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '^HTTP\S+ (\d+) [A-Za-z0-9 ]+.*'
+                - \1
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          url: 'http://facebook.com'
+          follow_redirects: 'NO'
+          http_proxy: 'http://{$PROXY_HOST}:8080/'
+          retrieve_mode: HEADERS
+          request_method: HEAD
+          tags:
+            - tag: component
+              value: proxy
+          triggers:
+            - uuid: 52c3bc061ac045e68f73ed1b93c30fcd
+              expression: 'last(/Http proxy proxy.vse.cz/proxy.8080.block.facebook.com)<>403'
+              name: 'Proxy: Je chybně dostupný http://facebook.com přes proxy {$PROXY_HOST}:8080'
+              priority: WARNING
+              description: |
+                Proxy: Je chybně dostupný http://facebook.com přes proxy {$PROXY_HOST}:8080
+                má vracet http code 403, vrací {ITEM.VALUE}
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Proxy: Proxy server {$PROXY_HOST}:8080 nevrací odpověď či chyba při parsování'
+                  expression: |
+                    last(/Http proxy proxy.vse.cz/proxy.8080.allow.wikipedia.cz)=0
+                    or last(/Http proxy proxy.vse.cz/proxy.8080.block.facebook.com)=0
+                    
+                    or
+                    
+                    nodata(/Http proxy proxy.vse.cz/proxy.8080.allow.wikipedia.cz, 2h)=1
+                    or nodata(/Http proxy proxy.vse.cz/proxy.8080.block.facebook.com, 2h)=1
+              tags:
+                - tag: component
+                  value: proxy
+      tags:
+        - tag: component
+          value: proxy
+      macros:
+        - macro: '{$PROXY_HOST}'
+          value: proxy.vse.cz
+  triggers:
+    - uuid: 8ce81e3e9cd8440e813aa1e8428b2f58
+      expression: |
+        last(/Http proxy proxy.vse.cz/proxy.3128.allow.debian.org) = 0
+        or
+        last(/Http proxy proxy.vse.cz/proxy.3128.block.google.com) = 0
+        
+        or 
+        
+        nodata(/Http proxy proxy.vse.cz/proxy.3128.allow.debian.org, 2h) = 1
+        or
+        nodata(/Http proxy proxy.vse.cz/proxy.3128.block.google.com, 2h) = 1
+      name: 'Proxy: Proxy server {$PROXY_HOST}:3128 nevrací odpověď či chyba při parsování'
+      priority: AVERAGE
+      description: 'Proxy: Proxy server {$PROXY_HOST}:3128 nevrací odpověď či chyba při parsování'
+      tags:
+        - tag: component
+          value: proxy
+    - uuid: 18f9c74480bd4e37b32c8bfceb7cc38a
+      expression: |
+        last(/Http proxy proxy.vse.cz/proxy.8080.allow.wikipedia.cz)=0
+        or last(/Http proxy proxy.vse.cz/proxy.8080.block.facebook.com)=0
+        
+        or
+        
+        nodata(/Http proxy proxy.vse.cz/proxy.8080.allow.wikipedia.cz, 2h)=1
+        or nodata(/Http proxy proxy.vse.cz/proxy.8080.block.facebook.com, 2h)=1
+      name: 'Proxy: Proxy server {$PROXY_HOST}:8080 nevrací odpověď či chyba při parsování'
+      priority: AVERAGE
+      description: 'Proxy: Proxy server {$PROXY_HOST}:8080 nevrací odpověď či chyba při parsování'
+      tags:
+        - tag: component
+          value: proxy
