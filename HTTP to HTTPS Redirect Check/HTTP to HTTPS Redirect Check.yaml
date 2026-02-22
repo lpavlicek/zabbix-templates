@@ -27,7 +27,7 @@ zabbix_export:
         Repository: https://github.com/lpavlicek/zabbix-templates
       vendor:
         name: lpavlicek
-        version: 7.4-6
+        version: 7.4-7
       groups:
         - name: 'lpavlicek templates'
       items:
