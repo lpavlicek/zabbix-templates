@@ -35,10 +35,14 @@ zabbix_export:
           name: 'HTTP redirect: Hostnames list'
           type: CALCULATED
           key: http.redirect.hostnames
-          delay: 1h
+          delay: 10m
           value_type: TEXT
           params: 'concat("{$HTTP_REDIRECT_ALIASES}","")'
           description: 'Returns the comma-separated list of hostnames defined in the {$HTTP_REDIRECT_ALIASES} macro. This value serves as the data source for LLD (Low-Level Discovery).'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
           tags:
             - tag: component
               value: http-redirect
@@ -64,6 +68,9 @@ zabbix_export:
                 - '-1'
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
           tags:
             - tag: component
               value: http-redirect
