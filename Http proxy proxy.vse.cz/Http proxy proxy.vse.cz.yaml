@@ -10,15 +10,54 @@ zabbix_export:
       description: 'Testování pravidel na proxy.vse.cz'
       vendor:
         name: lpavlicek
-        version: 7.4-3
+        version: 7.4-4
       groups:
         - name: 'lpavlicek templates'
       items:
+        - uuid: 8b12f59fd5ab45cba8b3ec0266de6177
+          name: 'Proxy: icmpping ipv4'
+          type: SIMPLE
+          key: 'icmpping[{$PROXY_IPV4}]'
+          delay: 2m
+          valuemap:
+            name: 'ICMP status'
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '-1'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '2'
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          tags:
+            - tag: component
+              value: proxy
+        - uuid: 2d5e41ecdc534b349eb2be4b92192fe3
+          name: 'Proxy: icmpping ipv6'
+          type: SIMPLE
+          key: 'icmpping[{$PROXY_IPV6}]'
+          delay: 2m
+          valuemap:
+            name: 'ICMP status'
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '-1'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '2'
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          tags:
+            - tag: component
+              value: proxy
         - uuid: 82059d0cfc044c458f36919686b24ddf
-          name: 'Proxy: port 3128, availability'
+          name: 'Proxy: port 3128'
           type: SIMPLE
           key: 'net.tcp.service[tcp,{$PROXY_HOST},3128]'
           delay: 2m
+          description: 'proxy host: {$PROXY_HOST}'
           valuemap:
             name: 'Tcp service status'
           preprocessing:
@@ -37,10 +76,11 @@ zabbix_export:
                 - tag: component
                   value: proxy
         - uuid: 0dc59c03b95d419da2e14bde94fe7116
-          name: 'Proxy: port 8080, availability'
+          name: 'Proxy: port 8080'
           type: SIMPLE
           key: 'net.tcp.service[tcp,{$PROXY_HOST},8080]'
           delay: 2m
+          description: 'proxy host: {$PROXY_HOST}'
           valuemap:
             name: 'Tcp service status'
           preprocessing:
@@ -54,6 +94,29 @@ zabbix_export:
             - uuid: 1a8b76f90a0c4ddaa548c6e0c8fbe6bf
               expression: 'last(/Http proxy proxy.vse.cz/net.tcp.service[tcp,{$PROXY_HOST},8080])=0'
               name: 'Proxy: port 8080 isn''t available/open'
+              priority: AVERAGE
+              tags:
+                - tag: component
+                  value: proxy
+        - uuid: 6601f9cb987343a0bc8169325ef7d11a
+          name: 'Proxy: port 8888'
+          type: SIMPLE
+          key: 'net.tcp.service[tcp,{$PROXY_HOST},8888]'
+          delay: 2m
+          description: 'proxy host: {$PROXY_HOST}'
+          valuemap:
+            name: 'Tcp service status'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 10m
+          tags:
+            - tag: component
+              value: proxy
+          triggers:
+            - uuid: 5f76bcce1f6249929b59554209c9677e
+              expression: 'last(/Http proxy proxy.vse.cz/net.tcp.service[tcp,{$PROXY_HOST},8888]) = 0'
+              name: 'Proxy: port 8888 isn''t available/open'
               priority: AVERAGE
               tags:
                 - tag: component
@@ -229,6 +292,117 @@ zabbix_export:
               tags:
                 - tag: component
                   value: proxy
+        - uuid: bb2fc7486229410d837e8693701f9b13
+          name: 'Proxy: port 8888, rule allow www.cms2.cz'
+          type: HTTP_AGENT
+          key: proxy.8888.allow.cms2.cz
+          delay: 5m
+          value_type: CHAR
+          description: 'na www.cms2.cz by měl být přístup jen přes port 8888'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'X-Squid-Error: (\S+)'
+                - \1
+              error_handler: CUSTOM_VALUE
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          timeout: 10s
+          url: 'http://www.cms2.cz/'
+          status_codes: ''
+          follow_redirects: 'NO'
+          http_proxy: 'http://{$PROXY_HOST}:8888/'
+          retrieve_mode: HEADERS
+          request_method: HEAD
+          tags:
+            - tag: component
+              value: proxy
+          triggers:
+            - uuid: b4349065e0ff429bab33caf35c9ea08c
+              expression: 'length(last(/Http proxy proxy.vse.cz/proxy.8888.allow.cms2.cz))>0'
+              name: 'Proxy: port 8888 - no valid response for http://www.cms2.cz'
+              dependencies:
+                - name: 'Proxy: port 8888 isn''t available/open'
+                  expression: 'last(/Http proxy proxy.vse.cz/net.tcp.service[tcp,{$PROXY_HOST},8888]) = 0'
+              tags:
+                - tag: component
+                  value: proxy
+        - uuid: 23facdc5e88545e192d6d9c7827c73fc
+          name: 'Proxy: port 8888, rule allow nms.vse.cz'
+          type: HTTP_AGENT
+          key: proxy.8888.allow.nms.vse.cz
+          delay: 5m
+          value_type: CHAR
+          description: 'Na portu 8888 by měl být stejný přístup jako na portu 8080.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'X-Squid-Error: (\S+)'
+                - \1
+              error_handler: CUSTOM_VALUE
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          timeout: 10s
+          url: 'http://nms.vse.cz/'
+          status_codes: ''
+          follow_redirects: 'NO'
+          http_proxy: 'http://{$PROXY_HOST}:8888/'
+          retrieve_mode: HEADERS
+          request_method: HEAD
+          tags:
+            - tag: component
+              value: proxy
+          triggers:
+            - uuid: b3b81e629ffb4534a00a1aa798e722f0
+              expression: 'length(last(/Http proxy proxy.vse.cz/proxy.8888.allow.nms.vse.cz)) > 0'
+              name: 'Proxy: port 8888 - no valid response for http://nms.vse.cz'
+              opdata: '{ITEM.VALUE}'
+              priority: WARNING
+              dependencies:
+                - name: 'Proxy: port 8888 isn''t available/open'
+                  expression: 'last(/Http proxy proxy.vse.cz/net.tcp.service[tcp,{$PROXY_HOST},8888]) = 0'
+              tags:
+                - tag: component
+                  value: proxy
+        - uuid: f3be2d7ef8d04130bc7cae18b13ab53f
+          name: 'Proxy: file /etc/squid/dstd_pornsites'
+          key: 'vfs.file.time[/etc/squid/dstd_pornsites,modify]'
+          delay: 10m
+          units: s
+          description: 'Jak starý je soubor /etc/squid/dstd_pornsites'
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '-1'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          tags:
+            - tag: component
+              value: proxy
+          triggers:
+            - uuid: c71e2a1295264ccba7aef9005197822a
+              expression: |
+                last(/Http proxy proxy.vse.cz/vfs.file.time[/etc/squid/dstd_pornsites,modify]) < now() - 32d
+                and last(/Http proxy proxy.vse.cz/vfs.file.time[/etc/squid/dstd_pornsites,modify]) > 0
+              name: 'Proxy: file /etc/squid/dstd_pornsites is old (> 32 days)'
+              priority: INFO
+              description: |
+                Soubory  /etc/squid/dstd_pornsites a /etc/squid/ /etc/squid/dstd_socialnet je potřeba aspoň jednou za měsíc aktualizovat. 
+                Poslední změna souboru: {ITEM.VALUE}
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: proxy
+            - uuid: 879fbbde22034a35a4bc309d8adb9286
+              expression: 'last(/Http proxy proxy.vse.cz/vfs.file.time[/etc/squid/dstd_pornsites,modify]) < now() - 90d'
+              name: 'Proxy: file /etc/squid/dstd_pornsites missing or too old (> 90 days)'
+              priority: WARNING
+              description: 'Soubory /etc/squid/dstd_pornsites a /etc/squid/dstd_socialnet jsou příliš staré, nutná aktualizace.'
+              tags:
+                - tag: component
+                  value: proxy
       tags:
         - tag: component
           value: proxy
@@ -236,7 +410,22 @@ zabbix_export:
         - macro: '{$PROXY_HOST}'
           value: proxy.vse.cz
           description: 'Hostname or IP address of the proxy server'
+        - macro: '{$PROXY_IPV4}'
+          value: 192.0.2.1
+          description: 'IPv4 address of the proxy server'
+        - macro: '{$PROXY_IPV6}'
+          value: '2001:db8::1'
+          description: 'IPv6 address of the proxy server'
       valuemaps:
+        - uuid: 7a760a6c238c485bac5983d4a64e4e2f
+          name: 'ICMP status'
+          mappings:
+            - value: '0'
+              newvalue: down
+            - value: '1'
+              newvalue: up
+            - value: '2'
+              newvalue: error
         - uuid: 9cd844e18c6b46339cc15a414a76fe77
           name: 'Tcp service status'
           mappings:
