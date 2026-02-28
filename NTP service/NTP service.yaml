@@ -1,0 +1,671 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 8e4fd411a1314f38ad84ed7f4c4a2e9c
+      template: 'NTP service'
+      name: 'NTP service'
+      description: |
+        Monitors NTP server availability and quality metrics using chrony running on the Zabbix server/proxy.
+        
+        REQUIREMENTS
+        ============
+        1. Fill in the macro {$NTP_HOST} with the DNS name (e.g. ntp.example.com) or IP address of the NTP server to monitor.
+           The external script dns_ip_discovery.sh resolves the hostname to IPv4 and IPv6 addresses.
+           For each resolved IP address, a simple check against the NTP service (default port 123) is performed.
+        
+         2. chrony must be running on the Zabbix server/proxy.
+            The monitored NTP servers must be configured as peers in chrony.conf using the same value as {$NTP_HOST}. Example:
+             server ntp.example.com iburst
+        
+        3. NTP parameters are retrieved using:
+             chronyc ntpdata <ntp_host>
+        
+        CHRONY PERMISSIONS
+        ==================
+        chrony <= 4.6: ntpdata requires root. Configure sudo for the zabbix user:
+          zabbix ALL=(root) NOPASSWD: /usr/bin/chronyc ntpdata *
+        
+        chrony >= 4.7: ntpdata can be enabled via the Unix socket by adding the following to chrony.conf:
+          opencommands activity authdata clients manual ntpdata rtcdata selectdata serverstats smoothing sourcename sources sourcestats tracking
+          At minimum, "ntpdata" must be listed; the others are optional.
+        
+        NTP parameters are retrieved by the external script chronyc_ntpdata.sh.
+        
+        EXTERNAL SCRIPTS
+        ================
+        Both external scripts must be placed in the Zabbix ExternalScripts directory (default: /usr/lib/zabbix/externalscripts):
+          - dns_ip_discovery.sh   resolves {$NTP_HOST} to IPv4/IPv6 addresses for discovery
+          - chronyc_ntpdata.sh    retrieves chronyc ntpdata output for the monitored host
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: a009630d44cc45ee9d8827cd9f361330
+          name: 'NTP: chronyc ntpdata raw'
+          type: EXTERNAL
+          key: 'chronyc_ntpdata.sh[{$NTP_HOST}]'
+          delay: 2m
+          history: '0'
+          value_type: TEXT
+          description: |
+            Raw output of "chronyc ntpdata {$NTP_HOST}" collected by the external script chronyc_ntpdata.sh.
+            History is intentionally disabled (history: 0) — all useful values are extracted by dependent items.
+            Enable history temporarily (e.g. 1h) for troubleshooting purposes only.
+            NOTE: Errors from this item (script failure, chronyc unavailable) propagate to dependent items.
+            The stratum item returns 17 on any preprocessing error, which fires the "Missing stratum value" trigger.
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '-1'
+              error_handler: CUSTOM_VALUE
+          tags:
+            - tag: component
+              value: ntp
+            - tag: stage
+              value: raw
+        - uuid: f5e4bb78dfd24f9d92930e392f9dd6b7
+          name: 'NTP: Leap status'
+          type: DEPENDENT
+          key: ntp.leap_status
+          description: |
+            Leap second indicator reported by the remote NTP server.
+            Encoded as integer: 0=Normal, 1=Insert second, 2=Delete second, 3=Not synchronised, 4=Unknown.
+          valuemap:
+            name: 'Leap status'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Leap status\s+:\s(.+)\n'
+                - \1
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  switch (value) {
+                    case "Normal":
+                      return 0;
+                    case "Insert second":
+                      return 1;
+                    case "Delete second":
+                      return 2;
+                    case "Not synchronised":
+                      return 3;
+                    default:
+                      return 4; // unexpected value
+                  }
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: 'chronyc_ntpdata.sh[{$NTP_HOST}]'
+          tags:
+            - tag: component
+              value: ntp
+          triggers:
+            - uuid: bb598404de204c33b8d25b2655eeed8a
+              expression: 'last(/NTP service/ntp.leap_status)>0'
+              name: 'NTP: Leap status is not Normal'
+              priority: WARNING
+              manual_close: 'YES'
+              dependencies:
+                - name: 'NTP: Leap status is Not synchronized'
+                  expression: 'last(/NTP service/ntp.leap_status)>2'
+                - name: 'NTP: Missing stratum value for {$NTP_HOST}'
+                  expression: 'last(/NTP service/ntp.stratum)=17'
+            - uuid: d3947be141614200971be90c683861bf
+              expression: 'last(/NTP service/ntp.leap_status)>2'
+              name: 'NTP: Leap status is Not synchronized'
+              priority: AVERAGE
+              description: 'Leap status "Not synchronised" — chronyd does not trust this peer.'
+              dependencies:
+                - name: 'NTP: Missing stratum value for {$NTP_HOST}'
+                  expression: 'last(/NTP service/ntp.stratum)=17'
+        - uuid: a97546e5c9f64f6ca7d66521f1951c62
+          name: 'NTP: Offset'
+          type: DEPENDENT
+          key: ntp.offset
+          value_type: FLOAT
+          units: s
+          description: |
+            The difference between the local clock on the Zabbix server/proxy and the time reported by {$NTP_HOST}.
+            
+            A large or growing offset may indicate:
+            - an overloaded NTP server
+            - network issues
+            - timestamping errors on either side
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Offset\s+:\s(\S+)\s'
+                - \1
+          master_item:
+            key: 'chronyc_ntpdata.sh[{$NTP_HOST}]'
+          tags:
+            - tag: component
+              value: ntp
+          triggers:
+            - uuid: 96506b02a0854c4cb04f33807c0ae896
+              expression: 'between(last(/NTP service/ntp.offset),-{$NTP_OFFSET_WARN},{$NTP_OFFSET_WARN}) = 0'
+              name: 'NTP: Time offset greater than {$NTP_OFFSET_WARN}s'
+              opdata: '{ITEM.VALUE}'
+              priority: WARNING
+              dependencies:
+                - name: 'NTP: Missing stratum value for {$NTP_HOST}'
+                  expression: 'last(/NTP service/ntp.stratum)=17'
+        - uuid: 58bb649db1fc4c5f91625f10dd02bdf0
+          name: 'NTP: Peer delay'
+          type: DEPENDENT
+          key: ntp.peer_delay
+          value_type: FLOAT
+          units: s
+          description: 'Round-trip time (RTT) of the NTP exchange between the Zabbix server/proxy and {$NTP_HOST}.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Peer delay\s+:\s+(\S+)\s'
+                - \1
+          master_item:
+            key: 'chronyc_ntpdata.sh[{$NTP_HOST}]'
+          tags:
+            - tag: component
+              value: ntp
+        - uuid: c3ed261ccbb848cd980c7266d56214df
+          name: 'NTP: Peer dispersion'
+          type: DEPENDENT
+          key: ntp.peer_dispersion
+          value_type: FLOAT
+          units: s
+          description: |
+            Dispersion of the NTP peer — a measure of uncertainty in the offset estimate for {$NTP_HOST}.
+            
+            Increases with:
+            - jitter in NTP packet timing
+            - instability of the remote server clock
+            - an incorrect time base on the remote server
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Peer dispersion\s+:\s(\S+)\s'
+                - \1
+          master_item:
+            key: 'chronyc_ntpdata.sh[{$NTP_HOST}]'
+          tags:
+            - tag: component
+              value: ntp
+          triggers:
+            - uuid: 516c0265511c4282b5b92907e21283cf
+              expression: 'last(/NTP service/ntp.peer_dispersion) > {$NTP_PEER_DISPERSION_WARN}'
+              name: 'NTP: Peer dispersion greater than {$NTP_PEER_DISPERSION_WARN}s'
+              priority: WARNING
+              description: 'Peer dispersion for {$NTP_HOST} exceeds the threshold {$NTP_PEER_DISPERSION_WARN}s. The NTP server may be unstable or poorly synchronised.'
+              dependencies:
+                - name: 'NTP: Missing stratum value for {$NTP_HOST}'
+                  expression: 'last(/NTP service/ntp.stratum)=17'
+        - uuid: 05f05fecb0b94b6e916ec80bf6214946
+          name: 'NTP: Response time'
+          type: DEPENDENT
+          key: ntp.response_time
+          value_type: FLOAT
+          units: s
+          description: |
+            Time elapsed between the NTP request sent by chrony and the response received from {$NTP_HOST}.
+            Often correlates with peer delay; unusually high values may indicate network congestion or server overload.
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Response time\s+:\s(\S+)\s'
+                - \1
+          master_item:
+            key: 'chronyc_ntpdata.sh[{$NTP_HOST}]'
+          tags:
+            - tag: component
+              value: ntp
+        - uuid: af26b492b58948ecb22c8239fe56b93d
+          name: 'NTP: Root delay'
+          type: DEPENDENT
+          key: ntp.root_delay
+          value_type: FLOAT
+          units: s
+          description: |
+            Total accumulated network path delay from {$NTP_HOST} back to the stratum-1 reference clock.
+            Typically larger than peer dispersion. A sudden increase may indicate routing changes or upstream issues.
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Root delay\s+:\s+(\S+)\s'
+                - \1
+          master_item:
+            key: 'chronyc_ntpdata.sh[{$NTP_HOST}]'
+          tags:
+            - tag: component
+              value: ntp
+        - uuid: 320d315cb3784f698b451a19a5d66ab8
+          name: 'NTP: Root dispersion'
+          type: DEPENDENT
+          key: ntp.root_dispersion
+          value_type: FLOAT
+          units: s
+          description: |
+            Total dispersion accumulated through all hops from {$NTP_HOST} back to the stratum-1 reference clock.
+            Dispersion arises from system clock resolution and statistical measurement variations at each hop.
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Root dispersion\s+:\s+(\S+)\s'
+                - \1
+          master_item:
+            key: 'chronyc_ntpdata.sh[{$NTP_HOST}]'
+          tags:
+            - tag: component
+              value: ntp
+        - uuid: 303170addd2246fd9724ab3dead3e70c
+          name: 'NTP: Stratum'
+          type: DEPENDENT
+          key: ntp.stratum
+          description: |
+            Stratum of {$NTP_HOST} as reported by chrony.
+            Indicates the number of hops from the reference clock: stratum 1 = directly attached reference, stratum 2 = one hop away, etc.
+            Special values: 16 = unsynchronized, 17 = missing (chronyc returned no data).
+          valuemap:
+            name: 'NTP stratum'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Stratum\s+:\s+(\d+)\s'
+                - \1
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '17'
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: 'chronyc_ntpdata.sh[{$NTP_HOST}]'
+          tags:
+            - tag: component
+              value: ntp
+          triggers:
+            - uuid: 5250f3f8c9604dcc93e31e572624dbf3
+              expression: 'last(/NTP service/ntp.stratum)=17'
+              name: 'NTP: Missing stratum value for {$NTP_HOST}'
+              priority: AVERAGE
+              description: |
+                The stratum item returned 17, which means the REGEX preprocessing on the raw chronyc output failed to find a valid stratum value.
+                This covers two distinct situations:
+                1. Script executed successfully but {$NTP_HOST} is not a known peer in chrony:
+                  - {$NTP_HOST} is not configured in chrony.conf on the Zabbix server/proxy
+                  - chrony has not yet exchanged packets with the peer (wait for next polling interval)
+                2. Script failed entirely (empty or error output):
+                  - chrony is not running on the Zabbix server/proxy
+                  - sudo permissions are missing (chrony <= 4.6)
+                  - the external script chronyc_ntpdata.sh is missing or not executable
+            - uuid: 78d0d13131834f3388db938490473bf7
+              expression: 'last(/NTP service/ntp.stratum)=16'
+              name: 'NTP: Not synchronized {$NTP_HOST}'
+              opdata: '{ITEM.VALUE}'
+              priority: AVERAGE
+              description: '{$NTP_HOST} reports stratum 16 (unsynchronized). Check whether it has access to upstream time sources.'
+              dependencies:
+                - name: 'NTP: Missing stratum value for {$NTP_HOST}'
+                  expression: 'last(/NTP service/ntp.stratum)=17'
+            - uuid: 1fd813a1df96406d91acf0e7c3d05684
+              expression: 'last(/NTP service/ntp.stratum)>{$NTP_HOST_EXPECTED_STRATUM}'
+              name: 'NTP: Stratum too high > {$NTP_HOST_EXPECTED_STRATUM}'
+              opdata: '{ITEM.VALUE}'
+              priority: WARNING
+              description: 'Stratum of {$NTP_HOST} exceeds the expected value ({$NTP_HOST_EXPECTED_STRATUM}). Probable loss of synchronization to primary time sources.'
+              dependencies:
+                - name: 'NTP: Missing stratum value for {$NTP_HOST}'
+                  expression: 'last(/NTP service/ntp.stratum)=17'
+                - name: 'NTP: Not synchronized {$NTP_HOST}'
+                  expression: 'last(/NTP service/ntp.stratum)=16'
+      discovery_rules:
+        - uuid: e42f67905a59430f87928011db034c36
+          name: 'NTP: IP address discovery for {$NTP_HOST}'
+          type: EXTERNAL
+          key: 'dns_ip_discovery.sh[{$NTP_HOST}]'
+          delay: 1h
+          description: |
+            Resolves {$NTP_HOST} to its IPv4 and/or IPv6 addresses using the external script dns_ip_discovery.sh.
+            For each discovered IP address, a simple UDP check on port {$NTP_PORT} is created.
+            Discovery runs every hour to catch DNS changes. Discovered items are removed after 7 days if no longer found.
+          item_prototypes:
+            - uuid: 369cd4fa51f44ac6ac3e9562b37ceea0
+              name: 'NTP: {#IP} available'
+              type: SIMPLE
+              key: 'net.udp.service[ntp,{#IP},{$NTP_PORT}]'
+              delay: 2m
+              description: |
+                UDP availability check of the NTP service on {#IP}:{$NTP_PORT}.
+                Returns: 1=up, 0=down, 2=configuration error (item unsupported).
+              valuemap:
+                name: 'ntp service status'
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '2'
+              tags:
+                - tag: component
+                  value: ntp
+              trigger_prototypes:
+                - uuid: 1d0b02dd46ed4bc2b8a90f30f58e624a
+                  expression: 'last(/NTP service/net.udp.service[ntp,{#IP},{$NTP_PORT}])<>1'
+                  name: 'NTP: Service not available via {#IP}'
+                  priority: AVERAGE
+                  description: 'The NTP service on {#IP}:{$NTP_PORT} is not responding. Check network connectivity and firewall rules.'
+      tags:
+        - tag: component
+          value: ntp
+      macros:
+        - macro: '{$NTP_HOST}'
+          description: 'DNS name or IP address of the NTP server to monitor, e.g. ntp.example.com. Must also be configured as a server in chrony.conf on the Zabbix server/proxy.'
+        - macro: '{$NTP_HOST_EXPECTED_STRATUM}'
+          value: '2'
+          description: 'Maximum expected stratum for {$NTP_HOST}. A trigger fires if the actual stratum exceeds this value.'
+        - macro: '{$NTP_OFFSET_WARN}'
+          value: '0.005'
+          description: 'Offset threshold in seconds. A WARNING trigger fires if |offset| exceeds this value. Default: 0.005 s (5 ms).'
+        - macro: '{$NTP_PEER_DISPERSION_WARN}'
+          value: '0.01'
+          description: 'Peer dispersion threshold in seconds. A trigger fires if peer dispersion exceeds this value. Default: 0.01 s (10 ms).'
+        - macro: '{$NTP_PORT}'
+          value: '123'
+          description: 'UDP port of the NTP service. Default: 123.'
+      dashboards:
+        - uuid: a6a87430b4e14d439cc32966d1c2b726
+          name: NTP
+          pages:
+            - widgets:
+                - type: svggraph
+                  name: 'Offset (difference between local clock and peer)'
+                  width: '36'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '1'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'NTP: Offset'
+                    - type: INTEGER
+                      name: ds.0.type
+                      value: '2'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: STRING
+                      name: reference
+                      value: INPGV
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Peer delay (RTT between Zabbix server and peer)'
+                  'y': '4'
+                  width: '36'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '1'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'NTP: Peer delay'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '2'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: EXXXE
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Root dispersion (total uncertainty from peer to stratum-0)'
+                  'y': '8'
+                  width: '36'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '1'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'NTP: Root dispersion'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: STRING
+                      name: reference
+                      value: SQSVR
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: item
+                  name: Stratum
+                  x: '36'
+                  width: '13'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'NTP service'
+                        key: ntp.stratum
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: show.1
+                      value: '4'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 3BC97D
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: FCCB1D
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '3'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: E65660
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '16'
+                    - type: INTEGER
+                      name: units_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: units_show
+                      value: '0'
+                - type: item
+                  name: 'Leap status'
+                  x: '36'
+                  'y': '2'
+                  width: '13'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'NTP service'
+                        key: ntp.leap_status
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: show.1
+                      value: '4'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 3BC97D
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: FCCB1D
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: E65660
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '3'
+                    - type: INTEGER
+                      name: units_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: units_show
+                      value: '0'
+                - type: svggraph
+                  name: 'Peer dispersion (uncertainty of offset measurement towards peer)'
+                  x: '36'
+                  'y': '4'
+                  width: '36'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '1'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'NTP: Peer dispersion'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: STRING
+                      name: reference
+                      value: FZBPX
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Root delay (total RTT from peer to stratum-0)'
+                  x: '36'
+                  'y': '8'
+                  width: '36'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '1'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'NTP: Root delay'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: STRING
+                      name: reference
+                      value: UXHSM
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: honeycomb
+                  name: 'NTP service availability'
+                  x: '49'
+                  width: '23'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'NTP: * available'
+                    - type: STRING
+                      name: primary_label
+                      value: '{ITEM.NAME}'
+                    - type: STRING
+                      name: reference
+                      value: UGJCN
+                    - type: INTEGER
+                      name: secondary_label_decimal_places
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: E65660
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 3BC97D
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: FF4000
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '2'
+      valuemaps:
+        - uuid: 147be46ee06b4da19bb0b016d58cf951
+          name: 'Leap status'
+          mappings:
+            - value: '0'
+              newvalue: Normal
+            - value: '1'
+              newvalue: 'Insert second'
+            - value: '2'
+              newvalue: 'Delete second'
+            - value: '3'
+              newvalue: 'Not synchronised'
+            - value: '4'
+              newvalue: Unknown
+        - uuid: df8782c95cf94005a02c3511dd6ba502
+          name: 'ntp service status'
+          mappings:
+            - value: '0'
+              newvalue: down
+            - value: '1'
+              newvalue: up
+            - value: '2'
+              newvalue: conf_error
+        - uuid: 84c55319f729422eba0a8975d2027afb
+          name: 'NTP stratum'
+          mappings:
+            - value: '17'
+              newvalue: missing
+            - value: '16'
+              newvalue: unsynchronized
+            - value: '1'
+              newvalue: primary
+            - type: IN_RANGE
+              value: 10-15
+              newvalue: local
+            - type: IN_RANGE
+              value: 2-9
+              newvalue: synchronized
