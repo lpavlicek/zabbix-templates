@@ -41,7 +41,7 @@ zabbix_export:
           - chronyc_ntpdata.sh    retrieves chronyc ntpdata output for the monitored host
       vendor:
         name: lpavlicek
-        version: 7.4-1
+        version: 7.4-2
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -308,6 +308,7 @@ zabbix_export:
               opdata: '{ITEM.VALUE}'
               priority: AVERAGE
               description: '{$NTP_HOST} reports stratum 16 (unsynchronized). Check whether it has access to upstream time sources.'
+              manual_close: 'YES'
               dependencies:
                 - name: 'NTP: Missing stratum value for {$NTP_HOST}'
                   expression: 'last(/NTP service/ntp.stratum)=17'
@@ -401,6 +402,9 @@ zabbix_export:
                     - type: INTEGER
                       name: ds.0.width
                       value: '2'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
                     - type: STRING
                       name: reference
                       value: INPGV
@@ -428,6 +432,9 @@ zabbix_export:
                     - type: INTEGER
                       name: legend_lines_mode
                       value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
                     - type: STRING
                       name: reference
                       value: EXXXE
@@ -452,6 +459,9 @@ zabbix_export:
                     - type: INTEGER
                       name: ds.0.width
                       value: '2'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
                     - type: STRING
                       name: reference
                       value: SQSVR
@@ -459,57 +469,16 @@ zabbix_export:
                       name: righty
                       value: '0'
                 - type: item
-                  name: Stratum
-                  x: '36'
-                  width: '13'
-                  fields:
-                    - type: INTEGER
-                      name: decimal_places
-                      value: '0'
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: 'NTP service'
-                        key: ntp.stratum
-                    - type: INTEGER
-                      name: show.0
-                      value: '2'
-                    - type: INTEGER
-                      name: show.1
-                      value: '4'
-                    - type: STRING
-                      name: thresholds.0.color
-                      value: 3BC97D
-                    - type: STRING
-                      name: thresholds.0.threshold
-                      value: '0'
-                    - type: STRING
-                      name: thresholds.1.color
-                      value: FCCB1D
-                    - type: STRING
-                      name: thresholds.1.threshold
-                      value: '3'
-                    - type: STRING
-                      name: thresholds.2.color
-                      value: E65660
-                    - type: STRING
-                      name: thresholds.2.threshold
-                      value: '16'
-                    - type: INTEGER
-                      name: units_bold
-                      value: '0'
-                    - type: INTEGER
-                      name: units_show
-                      value: '0'
-                - type: item
                   name: 'Leap status'
                   x: '36'
-                  'y': '2'
-                  width: '13'
+                  width: '12'
                   fields:
                     - type: INTEGER
                       name: decimal_places
                       value: '0'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
                     - type: ITEM
                       name: itemid.0
                       value:
@@ -545,6 +514,56 @@ zabbix_export:
                     - type: INTEGER
                       name: units_show
                       value: '0'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: gauge
+                  name: Stratum
+                  x: '36'
+                  'y': '2'
+                  width: '12'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'NTP service'
+                        key: ntp.stratum
+                    - type: STRING
+                      name: max
+                      value: '17'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: show.1
+                      value: '5'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 3BC97D
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: FCCB1D
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '3'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: E65660
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '16'
+                    - type: INTEGER
+                      name: th_show_arc
+                      value: '1'
                 - type: svggraph
                   name: 'Peer dispersion (uncertainty of offset measurement towards peer)'
                   x: '36'
@@ -564,6 +583,9 @@ zabbix_export:
                     - type: INTEGER
                       name: ds.0.width
                       value: '2'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
                     - type: STRING
                       name: reference
                       value: FZBPX
@@ -589,6 +611,9 @@ zabbix_export:
                     - type: INTEGER
                       name: ds.0.width
                       value: '2'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
                     - type: STRING
                       name: reference
                       value: UXHSM
@@ -597,8 +622,8 @@ zabbix_export:
                       value: '0'
                 - type: honeycomb
                   name: 'NTP service availability'
-                  x: '49'
-                  width: '23'
+                  x: '48'
+                  width: '24'
                   height: '4'
                   fields:
                     - type: STRING
@@ -661,11 +686,3 @@ zabbix_export:
               newvalue: missing
             - value: '16'
               newvalue: unsynchronized
-            - value: '1'
-              newvalue: primary
-            - type: IN_RANGE
-              value: 10-15
-              newvalue: local
-            - type: IN_RANGE
-              value: 2-9
-              newvalue: synchronized
