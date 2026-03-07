@@ -51,7 +51,7 @@ chmod +x /usr/lib/zabbix/externalscripts/chronyc_ntpdata.sh
 
 ```
 # /etc/sudoers.d/zabbix-chronyc
-zabbix ALL=(root) NOPASSWD: /usr/bin/chronyc ntpdata *
+zabbix ALL=(root) NOPASSWD: /usr/bin/chronyc -4 ntpdata *
 ```
 
 #### chrony ≥ 4.7
@@ -73,7 +73,7 @@ systemctl reload chronyd
 The monitored NTP server must be configured as a peer in `/etc/chrony.conf` on the Zabbix server/proxy, using the **exact same value** as the `{$NTP_HOST}` macro. For example:
 
 ```
-server ntp.example.com iburst
+server ntp.example.com iburst ipv4
 ```
 
 Reload chrony after making changes:

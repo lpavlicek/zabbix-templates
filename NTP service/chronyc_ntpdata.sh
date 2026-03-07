@@ -17,7 +17,7 @@ if [ -z "$target" ]; then
 fi
 
 # Build command
-cmd=( "$SUDO_BIN" "$CHRONYC_BIN" "ntpdata" "$target" )
+cmd=( "$SUDO_BIN" "$CHRONYC_BIN" "-4" "ntpdata" "$target" )
 
 # Execute and forward stdout
 "${cmd[@]}"
