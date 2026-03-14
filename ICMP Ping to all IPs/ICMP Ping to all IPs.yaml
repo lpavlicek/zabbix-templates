@@ -1,0 +1,257 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: adf0c4e08e5d4d9cbf27b3a27060479b
+      template: 'ICMP Ping to all IPs'
+      name: 'ICMP Ping to all IPs'
+      description: |
+        Template Net ICMP Ping
+        
+        ## Requirements
+        
+        Place `dns_ip_discovery.sh` in the Zabbix external scripts directory
+        (default: `/usr/lib/zabbix/externalscripts/`) and make it executable.
+      readme: |
+        ## Setup
+        
+        Set `Threshold of ICMP packet loss` and `Threshold of the average ICMP response`
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 52793f7de46b44d294b509e48331f3f0
+          name: 'ICMP ping overall status'
+          type: CALCULATED
+          key: icmpping.overall_status
+          value_type: FLOAT
+          params: 'avg(max_foreach(//icmpping[*],3m))'
+          description: |
+            ICMP ping status across all discovered IP addresses.
+            Intended for dashboard display.
+            - 0   no IP address responded to ping in the last 3 minutes
+            - 0<x<1  some IP addresses did not respond in the last 3 minutes
+            - 1   all IP addresses responded in the last 3 minutes
+            
+            Note: it cannot be determined whether 2 or 3 attempts occurred in the last 3 minutes.
+            
+            
+            This item is intended for dashboard visualization only; no trigger is defined on it.
+          tags:
+            - tag: component
+              value: health
+            - tag: component
+              value: network
+      discovery_rules:
+        - uuid: d7c2cf93603d4b3d84c39415354bcf82
+          name: 'ICMP IP address discovery for {HOST.NAME}'
+          type: EXTERNAL
+          key: 'dns_ip_discovery.sh["{HOST.NAME}"]'
+          delay: 1h
+          description: |
+            Resolves {HOST.NAME} to its IPv4 and/or IPv6 addresses using the external script dns_ip_discovery.sh.
+            
+            Discovery runs every hour to catch DNS changes. Discovered items are removed after 7 days if no longer found.
+          item_prototypes:
+            - uuid: ae360358359b4f2c9af3f58adb0f4172
+              name: '{#IP} ICMP loss'
+              type: SIMPLE
+              key: 'icmppingloss[{#IP}]'
+              value_type: FLOAT
+              units: '%'
+              description: 'The percentage of lost packets.'
+              tags:
+                - tag: component
+                  value: health
+                - tag: component
+                  value: network
+              trigger_prototypes:
+                - uuid: 269a8e09236240deaae017dfce6f2b5b
+                  expression: 'min(/ICMP Ping to all IPs/icmppingloss[{#IP}], 5m) > {$ICMP_LOSS_WARN} and min(/ICMP Ping to all IPs/icmppingloss[{#IP}], 5m) < 100'
+                  name: '{#IP} ICMP: High ICMP ping loss'
+                  opdata: 'Loss: {ITEM.LASTVALUE1}'
+                  priority: WARNING
+                  description: 'ICMP packets loss detected.'
+                  dependencies:
+                    - name: '{#IP} ICMP: Unavailable by ICMP ping'
+                      expression: 'max(/ICMP Ping to all IPs/icmpping[{#IP}],#3) = 0'
+                  tags:
+                    - tag: scope
+                      value: availability
+                    - tag: scope
+                      value: performance
+            - uuid: 781e4c02ba5a41a887abec9fad82cbb0
+              name: '{#IP} ICMP response time'
+              type: SIMPLE
+              key: 'icmppingsec[{#IP}]'
+              value_type: FLOAT
+              units: s
+              description: 'The ICMP ping response time (in seconds).'
+              tags:
+                - tag: component
+                  value: health
+                - tag: component
+                  value: network
+              trigger_prototypes:
+                - uuid: dd2d53db0b1341689dc04e82865882e1
+                  expression: 'avg(/ICMP Ping to all IPs/icmppingsec[{#IP}],5m) > {$ICMP_RESPONSE_TIME_WARN}'
+                  name: '{#IP} ICMP: High ICMP ping response time'
+                  opdata: 'Value: {ITEM.LASTVALUE1}'
+                  priority: WARNING
+                  description: 'Average ICMP response time is too high.'
+                  dependencies:
+                    - name: '{#IP} ICMP: High ICMP ping loss'
+                      expression: 'min(/ICMP Ping to all IPs/icmppingloss[{#IP}], 5m) > {$ICMP_LOSS_WARN} and min(/ICMP Ping to all IPs/icmppingloss[{#IP}], 5m) < 100'
+                    - name: '{#IP} ICMP: Unavailable by ICMP ping'
+                      expression: 'max(/ICMP Ping to all IPs/icmpping[{#IP}],#3) = 0'
+                  tags:
+                    - tag: scope
+                      value: availability
+                    - tag: scope
+                      value: performance
+            - uuid: f8a69b7d86c74e539181de7a221655ef
+              name: '{#IP} ICMP ping'
+              type: SIMPLE
+              key: 'icmpping[{#IP}]'
+              description: |
+                The host accessibility by ICMP ping.
+                
+                0 - ICMP ping fails;
+                1 - ICMP ping successful.
+              valuemap:
+                name: 'Service state'
+              tags:
+                - tag: component
+                  value: health
+                - tag: component
+                  value: network
+              trigger_prototypes:
+                - uuid: 3fd861d4d3f64469ba2cd6dc6d0e09a6
+                  expression: 'max(/ICMP Ping to all IPs/icmpping[{#IP}],#3) = 0'
+                  name: '{#IP} ICMP: Unavailable by ICMP ping'
+                  priority: HIGH
+                  description: 'Last three attempts returned timeout. Please check device connectivity.'
+                  tags:
+                    - tag: scope
+                      value: availability
+          graph_prototypes:
+            - uuid: 4cae11c74b3a4d9d804d014ef6e53b2a
+              name: 'ICMP loss for {#IP}'
+              show_work_period: 'NO'
+              show_triggers: 'NO'
+              ymin_type_1: FIXED
+              graph_items:
+                - color: 1A7C11
+                  calc_fnc: ALL
+                  item:
+                    host: 'ICMP Ping to all IPs'
+                    key: 'icmppingloss[{#IP}]'
+            - uuid: 445dceda1ddc44d9a4069667fff3fcc4
+              name: 'ICMP ping for {#IP}'
+              yaxismax: '1'
+              show_work_period: 'NO'
+              show_triggers: 'NO'
+              ymin_type_1: FIXED
+              ymax_type_1: FIXED
+              graph_items:
+                - color: 1A7C11
+                  calc_fnc: MIN
+                  item:
+                    host: 'ICMP Ping to all IPs'
+                    key: 'icmpping[{#IP}]'
+            - uuid: ed679b4499214e288b89036e1e72bf58
+              name: 'ICMP response time for {#IP}'
+              show_work_period: 'NO'
+              ymin_type_1: FIXED
+              graph_items:
+                - color: 1A7C11
+                  calc_fnc: ALL
+                  item:
+                    host: 'ICMP Ping to all IPs'
+                    key: 'icmppingsec[{#IP}]'
+      tags:
+        - tag: class
+          value: network
+        - tag: target
+          value: icmp
+      macros:
+        - macro: '{$ICMP_LOSS_WARN}'
+          value: '20'
+          description: 'Warning threshold of ICMP packet loss in %.'
+          config:
+            type: TEXT
+            priority: '1'
+            section_name: Thresholds
+            label: 'Threshold of ICMP packet loss'
+            description: 'Warning threshold of ICMP packet loss in %. In the range from 0 to 100 inclusive.'
+            regex: '^([0-9]+|(([0-9]+)\.([0-9]+)))$'
+        - macro: '{$ICMP_RESPONSE_TIME_WARN}'
+          value: '0.15'
+          description: 'Warning threshold of the average ICMP response time in seconds.'
+          config:
+            type: TEXT
+            priority: '2'
+            section_name: Thresholds
+            label: 'Threshold of the average ICMP response'
+            description: 'Warning threshold of the average ICMP response time in seconds. No less than 0.'
+            regex: '^([0-9]+|(([0-9]+)\.([0-9]+)))$'
+      dashboards:
+        - uuid: 1d6385b9ebc3470b8c9c77b506a8fbd2
+          name: ICMP
+          display_period: '60'
+          pages:
+            - name: ICMP
+              widgets:
+                - type: graphprototype
+                  name: 'ICMP ping'
+                  width: '72'
+                  height: '3'
+                  fields:
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid.0
+                      value:
+                        host: 'ICMP Ping to all IPs'
+                        name: 'ICMP ping for {#IP}'
+                    - type: STRING
+                      name: reference
+                      value: MXUIH
+                - type: graphprototype
+                  name: 'ICMP response time'
+                  'y': '3'
+                  width: '72'
+                  height: '5'
+                  fields:
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid.0
+                      value:
+                        host: 'ICMP Ping to all IPs'
+                        name: 'ICMP response time for {#IP}'
+                    - type: STRING
+                      name: reference
+                      value: ZFPIY
+                - type: graphprototype
+                  name: 'ICMP loss'
+                  'y': '8'
+                  width: '72'
+                  height: '5'
+                  fields:
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid.0
+                      value:
+                        host: 'ICMP Ping to all IPs'
+                        name: 'ICMP loss for {#IP}'
+                    - type: STRING
+                      name: reference
+                      value: PLYWF
+      valuemaps:
+        - uuid: b724c77a34aa464c9ec71e98d6b63d06
+          name: 'Service state'
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
