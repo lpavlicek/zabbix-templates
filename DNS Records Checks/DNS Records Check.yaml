@@ -1,0 +1,166 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 26327cfe43cf4c1eb3a35b660913a2c1
+      template: 'DNS Records Check'
+      name: 'DNS Records Check'
+      description: |
+        Template for monitoring DNS record availability from Zabbix server or proxy (agentless).
+        
+        Requires external check script dns_check.sh placed in the ExternalScripts directory
+        on the Zabbix server/proxy.
+        
+        DNS queries are configured via the {$DNS.QUERIES} macro in the format:
+          type:name,type:name,...
+        Supported types: a, aaaa, mx, ns, soa, txt, ptr, cname
+        
+        A check fails when the DNS server does not respond, returns NXDOMAIN, SERVFAIL,
+        or returns no record of the requested type.
+        
+        LLD discovery requires no additional script — the query list is read directly
+        from the macro via a CALCULATED item and JavaScript preprocessing.
+        
+        By default, queries are sent to the host's IP address or DNS name ({HOST.CONN}).
+        Override {$DNS.SERVER} on the host level to query a different DNS server.
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: f43adbc472a2418cbdf32732f0f27ecf
+          name: 'DNS records overall status'
+          type: CALCULATED
+          key: dns.records.overall.status
+          delay: 2m
+          params: 'min(last_foreach(//dns_check.sh[*,*,*,*]))'
+          description: |
+            Aggregated status across all DNS record checks on this host.
+            Returns the minimum value of all dns_check.sh items: 
+            1 = all records found (OK)
+            0 = at least one record not found or query failed (FAIL)
+          valuemap:
+            name: 'DNS records overall status'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 10m
+          tags:
+            - tag: component
+              value: dns
+        - uuid: b877a4737dc3441792edb865c953b6f8
+          name: 'DNS Records Queries List'
+          type: CALCULATED
+          key: dns.records.queries.list
+          delay: '{$DNS.LLD.INTERVAL}'
+          history: '0'
+          value_type: TEXT
+          params: 'concat("{$DNS.QUERIES}","")'
+          description: |
+            Master item for LLD discovery. Reads the {$DNS.QUERIES} macro value
+            and passes it to the dependent discovery rule.
+            History is disabled — this item serves only as a data source for LLD,
+            its value does not need to be stored.
+            
+            Format: type:name,type:name,...
+            Example: soa:vse.cz,a:www.cms2.cz,txt:txt1500.ue-prague.cz
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 4h
+          tags:
+            - tag: component
+              value: dns
+      discovery_rules:
+        - uuid: 79f7cd62fd764978b1b04e737518b63b
+          name: 'DNS queries discovery'
+          type: DEPENDENT
+          key: dns.queries.discovery
+          description: |
+            LLD discovery rule dependent on the dns.queries.list master item.
+            JavaScript preprocessing splits the query list and generates
+            {#DNS_TYPE} and {#DNS_NAME} LLD macros for each query entry.
+          item_prototypes:
+            - uuid: 81767521ce1a469090e3744573160014
+              name: 'DNS check: {#DNS_TYPE}:{#DNS_NAME}'
+              type: EXTERNAL
+              key: 'dns_check.sh["{#DNS_TYPE}","{#DNS_NAME}","{HOST.CONN}","{$DNS.TIMEOUT}"]'
+              delay: '{$DNS.CHECK.INTERVAL}'
+              description: |
+                Result of DNS query for record type {#DNS_TYPE} and name {#DNS_NAME}
+                sent to the host's address ({HOST.CONN}).
+                1 = record found (OK)
+                0 = record not found or query failed (PROBLEM)
+              valuemap:
+                name: 'DNS records check status'
+              tags:
+                - tag: component
+                  value: dns
+                - tag: dns_name
+                  value: '{#DNS_NAME}'
+                - tag: dns_type
+                  value: '{#DNS_TYPE}'
+              trigger_prototypes:
+                - uuid: 096709bfd399402b946b2efad50306a9
+                  expression: 'last(/DNS Records Check/dns_check.sh["{#DNS_TYPE}","{#DNS_NAME}","{HOST.CONN}","{$DNS.TIMEOUT}"])=0'
+                  name: 'DNS: {#DNS_TYPE}:{#DNS_NAME} - record not found or query failed'
+                  priority: HIGH
+                  description: |
+                    DNS query {#DNS_TYPE}:{#DNS_NAME} failed.
+                    The DNS server did not respond, returned NXDOMAIN, SERVFAIL, or no record of the requested type was found.
+                  tags:
+                    - tag: component
+                      value: dns
+                    - tag: scope
+                      value: availability
+          master_item:
+            key: dns.records.queries.list
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var queries = value.split(',').map(function(q) { return q.trim(); }).filter(function(q) { return q.length > 0; });
+                  var result = [];
+                  for (var i = 0; i < queries.length; i++) {
+                    var sep = queries[i].indexOf(':');
+                    if (sep < 1) continue;
+                    var type = queries[i].substring(0, sep).toLowerCase();
+                    var name = queries[i].substring(sep + 1);
+                    if (!name) continue;
+                    result.push({
+                      "{#DNS_TYPE}": type,
+                      "{#DNS_NAME}": name
+                    });
+                  }
+                  return JSON.stringify(result);
+      macros:
+        - macro: '{$DNS.CHECK.INTERVAL}'
+          value: 5m
+          description: 'Interval for DNS record checks (external check execution).'
+        - macro: '{$DNS.LLD.INTERVAL}'
+          value: 1h
+          description: 'Interval for LLD discovery (how often the query list macro is re-read).'
+        - macro: '{$DNS.QUERIES}'
+          value: 'soa:vse.cz,soa:102.146.in-addr.arpa'
+          description: 'Comma-separated list of DNS queries in the format type:name. Supported types: a, aaaa, mx, ns, soa, txt, ptr, cname Example: soa:vse.cz,a:www.cms2.cz,txt:txt1500.ue-prague.cz'
+        - macro: '{$DNS.TIMEOUT}'
+          value: '2'
+          description: 'Timeout for DNS query in seconds. Note: Zabbix external check default execution timeout is 3 seconds.'
+      valuemaps:
+        - uuid: 6b8e70e82140465299a5c75598edd10a
+          name: 'DNS records check status'
+          mappings:
+            - value: '0'
+              newvalue: 'FAIL - record not found'
+            - value: '1'
+              newvalue: 'OK - record found'
+        - uuid: ee2cb717f25f4071a4604acd9323734d
+          name: 'DNS records overall status'
+          mappings:
+            - value: '0'
+              newvalue: 'Some FAIL'
+            - value: '1'
+              newvalue: 'All OK'
