@@ -16,6 +16,9 @@
 #   0   DNS server did not respond, returned NXDOMAIN/SERVFAIL, or no record found (FAIL)
 #
 # Usage in Zabbix: dns_check.sh["{#DNS_TYPE}","{#DNS_NAME}","{$DNS.SERVER}","{$DNS.TIMEOUT}"]
+#
+# Requires: kdig (knot-dnsutils / knot-utils package)
+#
 # =============================================================================
 
 DNS_TYPE="${1,,}"   # normalize to lowercase
@@ -28,11 +31,11 @@ if [ -z "$DNS_TYPE" ] || [ -z "$DNS_NAME" ]; then
     exit 1
 fi
 
-# Build dig arguments:
+# Build kdig arguments:
 #   +short   — output only record data, one entry per line; empty output = nothing found
 #   +time    — per-query timeout in seconds
-#   +tries=1 — single attempt, no retransmissions
-DIG_ARGS=("+short" "+time=${TIMEOUT}" "+tries=1")
+#   +retry=0 — single attempt, no retransmissions
+DIG_ARGS=("+short" "+time=${TIMEOUT}" "+retry=0")
 
 DNS_SERVER_CLEAN=$(echo "$DNS_SERVER" | tr -d '[:space:]')
 [ -n "$DNS_SERVER_CLEAN" ] && DIG_ARGS+=("@${DNS_SERVER_CLEAN}")
@@ -40,7 +43,7 @@ DNS_SERVER_CLEAN=$(echo "$DNS_SERVER" | tr -d '[:space:]')
 DIG_ARGS+=("$DNS_NAME" "$DNS_TYPE")
 
 # Run dig; capture both stdout and stderr
-DIG_OUTPUT=$(dig "${DIG_ARGS[@]}" 2>&1)
+DIG_OUTPUT=$(kdig "${DIG_ARGS[@]}" 2>&1)
 DIG_RC=$?
 
 # Non-zero exit code = timeout, network error or other fatal dig error
