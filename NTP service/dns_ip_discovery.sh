@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-INPUT="$1"
+# jen do první mezery
+INPUT="${1%% *}"
 
 if [[ -z "$INPUT" ]]; then
   echo '{"data":[]}'
