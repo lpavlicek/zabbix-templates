@@ -1,0 +1,2551 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 9789efae5d914f76839269188c11dcd4
+      template: 'DNS unbound'
+      name: 'DNS unbound'
+      description: 'A Zabbix 7.4 template for monitoring the [unbound](https://nlnetlabs.nl/projects/unbound/about/) recursive DNS resolver. Statistics are collected via `unbound-control stats_noreset` and converted to JSON by a Perl helper script, enabling efficient dependent-item collection with a single external call every 5 minutes.'
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: b0bc2e24a80f4033be7d1d29662245a7
+          name: 'Unbound: Error message'
+          type: DEPENDENT
+          key: unbound.error_msg
+          value_type: CHAR
+          description: 'Error message when retrieving statistics from unbound.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.error_msg
+              error_handler: CUSTOM_VALUE
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          triggers:
+            - uuid: 0bea761ec559454d891e95925da3313e
+              expression: 'length(last(/DNS unbound/unbound.error_msg))>0'
+              name: 'Unbound: Error message'
+              opdata: '{ITEM.VALUE}'
+              priority: AVERAGE
+              description: 'Error retrieving statistics. For example, the unbound process is not running.'
+              tags:
+                - tag: component
+                  value: dns
+                - tag: software
+                  value: unbound
+        - uuid: 3ab03f32db174fb38fa03ea6c37f0874
+          name: 'Unbound: Queries with reply time between 0.000s and 0.016s'
+          type: DEPENDENT
+          key: unbound.histogram_0ms_16ms
+          value_type: FLOAT
+          units: qps
+          description: 'Element counts the recursive queries whose reply time fit between the lower and upper bound. Times larger or equal to the lower bound, and smaller than the upper bound.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.histogram_0ms_16ms
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: histogram
+        - uuid: 9e302ef0be764d47aee0f409107797c9
+          name: 'Unbound: Queries with reply time between 1s and 2s'
+          type: DEPENDENT
+          key: unbound.histogram_1s_2s
+          value_type: FLOAT
+          units: qps
+          description: 'Element counts the recursive queries whose reply time fit between the lower and upper bound. Times larger or equal to the lower bound, and smaller than the upper bound.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.histogram_1s_2s
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: histogram
+        - uuid: e02b4d2fdd9a47fd894c994a98321da9
+          name: 'Unbound: Queries with reply time between 2s and 4s'
+          type: DEPENDENT
+          key: unbound.histogram_2s_4s
+          value_type: FLOAT
+          units: qps
+          description: 'Element counts the recursive queries whose reply time fit between the lower and upper bound. Times larger or equal to the lower bound, and smaller than the upper bound.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.histogram_2s_4s
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: histogram
+        - uuid: 5a293215c8fc457bb1e0a50e023b4fc0
+          name: 'Unbound: Queries with reply time between 4s and 512s'
+          type: DEPENDENT
+          key: unbound.histogram_4s_512s
+          value_type: FLOAT
+          units: qps
+          description: 'Element counts the recursive queries whose reply time fit between the lower and upper bound. Times larger or equal to the lower bound, and smaller than the upper bound.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.histogram_4s_512s
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: histogram
+        - uuid: ebda1a4531e94ccfbd937bd84a77ebd9
+          name: 'Unbound: Queries with reply time between 0.016s and 0.032s'
+          type: DEPENDENT
+          key: unbound.histogram_16ms_32ms
+          value_type: FLOAT
+          units: qps
+          description: 'Element counts the recursive queries whose reply time fit between the lower and upper bound. Times larger or equal to the lower bound, and smaller than the upper bound.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.histogram_16ms_32ms
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: histogram
+        - uuid: b7b27b9bbccb41fc8efe4bdf68070f16
+          name: 'Unbound: Queries with reply time between 0.032s and 0.064s'
+          type: DEPENDENT
+          key: unbound.histogram_32ms_64ms
+          value_type: FLOAT
+          units: qps
+          description: 'Element counts the recursive queries whose reply time fit between the lower and upper bound. Times larger or equal to the lower bound, and smaller than the upper bound.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.histogram_32ms_64ms
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: histogram
+        - uuid: 3538535fed7f46a282efd1a1d5312c32
+          name: 'Unbound: Queries with reply time between 0.064s and 0.128s'
+          type: DEPENDENT
+          key: unbound.histogram_64ms_128ms
+          value_type: FLOAT
+          units: qps
+          description: 'Element counts the recursive queries whose reply time fit between the lower and upper bound. Times larger or equal to the lower bound, and smaller than the upper bound.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.histogram_64ms_128ms
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: histogram
+        - uuid: 18b98e85056047158b71f38e862c9841
+          name: 'Unbound: Queries with reply time between 0.128s and 0.256s'
+          type: DEPENDENT
+          key: unbound.histogram_128ms_256ms
+          value_type: FLOAT
+          units: qps
+          description: 'Element counts the recursive queries whose reply time fit between the lower and upper bound. Times larger or equal to the lower bound, and smaller than the upper bound.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.histogram_128ms_256ms
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: histogram
+        - uuid: 4f3d9f6845e84ca9b33854bad2a66c37
+          name: 'Unbound: Queries with reply time between 0.256s and 0.512s'
+          type: DEPENDENT
+          key: unbound.histogram_256ms_512ms
+          value_type: FLOAT
+          units: qps
+          description: 'Element counts the recursive queries whose reply time fit between the lower and upper bound. Times larger or equal to the lower bound, and smaller than the upper bound.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.histogram_256ms_512ms
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: histogram
+        - uuid: 0dde4ec070084bbe8306be64a58fc61c
+          name: 'Unbound: Queries with reply time between 0.512s and 1s'
+          type: DEPENDENT
+          key: unbound.histogram_512ms_1s
+          value_type: FLOAT
+          units: qps
+          description: 'Element counts the recursive queries whose reply time fit between the lower and upper bound. Times larger or equal to the lower bound, and smaller than the upper bound.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.histogram_512ms_1s
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: histogram
+        - uuid: 882752bcfdc3464f80e7992eac4e8991
+          name: 'Unbound: Infrastructure cache entries'
+          type: DEPENDENT
+          key: unbound.infra_cache_count
+          value_type: FLOAT
+          description: 'The number of items in the infra cache. These are IP addresses with their timing and protocol support information (RTT, lame, EDNS info per server).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.infra_cache_count
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: cache
+        - uuid: 4e08728037e54482b7fad6b4b522db84
+          name: 'Unbound: Key cache entries'
+          type: DEPENDENT
+          key: unbound.key_cache_count
+          value_type: FLOAT
+          description: 'Number of entries currently stored in the DNSSEC key cache.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.key_cache_count
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: cache
+        - uuid: 0b87d170ac0645cb86ef9161251075c7
+          name: 'Unbound: Memory used by message cache'
+          type: DEPENDENT
+          key: unbound.mem_cache_message
+          value_type: FLOAT
+          units: B
+          description: 'Memory in bytes used by the message (query/response) cache.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mem_cache_message
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: memory
+        - uuid: f1f5305ba10047b58e476f2c7cf60b29
+          name: 'Unbound: Memory used by RRset cache'
+          type: DEPENDENT
+          key: unbound.mem_cache_rrset
+          value_type: FLOAT
+          units: B
+          description: 'Memory in bytes used by the RRset cache.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mem_cache_rrset
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: memory
+        - uuid: b467630c282e4a6ca05ef43f9fbb1585
+          name: 'Unbound: Memory used by HTTP query buffer'
+          type: DEPENDENT
+          key: unbound.mem_http_query_buffer
+          value_type: FLOAT
+          units: B
+          description: 'Memory in bytes used by the DNS-over-HTTPS query buffer.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mem_http_query_buffer
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: memory
+        - uuid: 955cc0a4b62c41df9f1f17fa184cdc00
+          name: 'Unbound: Memory used by HTTP response buffer'
+          type: DEPENDENT
+          key: unbound.mem_http_response_buffer
+          value_type: FLOAT
+          units: B
+          description: 'Memory in bytes used by the DNS-over-HTTPS response buffer.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mem_http_response_buffer
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: memory
+        - uuid: 43c5528235b84a5ab298d37af14450fc
+          name: 'Unbound: Memory used by iterator module'
+          type: DEPENDENT
+          key: unbound.mem_mod_iterator
+          value_type: FLOAT
+          units: B
+          description: 'Memory in bytes used by the iterator module.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mem_mod_iterator
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: memory
+        - uuid: 06f665631d884b40984a7ab4e6ced214
+          name: 'Unbound: Memory used by respip module'
+          type: DEPENDENT
+          key: unbound.mem_mod_respip
+          value_type: FLOAT
+          units: B
+          description: 'Memory in bytes used by the response-IP (RPZ) module.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mem_mod_respip
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: memory
+        - uuid: 36b163695b01482e924dcd4a6d5feede
+          name: 'Unbound: Memory used by subnet module'
+          type: DEPENDENT
+          key: unbound.mem_mod_subnet
+          value_type: FLOAT
+          units: B
+          description: 'Memory in bytes used by the client subnet (ECS) module.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mem_mod_subnet
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: memory
+        - uuid: 4375e6ea8d814adc9a9179e5ca8d4b4d
+          name: 'Unbound: Memory used by validator module'
+          type: DEPENDENT
+          key: unbound.mem_mod_validator
+          value_type: FLOAT
+          units: B
+          description: 'Memory in bytes used by the DNSSEC validator module.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mem_mod_validator
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: memory
+        - uuid: a0e6c9048bd442e59cc41ababb433c9f
+          name: 'Unbound: Memory used by stream wait buffer'
+          type: DEPENDENT
+          key: unbound.mem_streamwait
+          value_type: FLOAT
+          units: B
+          description: 'Memory in bytes used by TCP stream waiting buffer.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mem_streamwait
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: memory
+        - uuid: 91b16dd8737e4436909c4459948e1a39
+          name: 'Unbound: Message cache entries'
+          type: DEPENDENT
+          key: unbound.msg_cache_count
+          value_type: FLOAT
+          description: 'Number of entries currently stored in the message (query/response) cache.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.msg_cache_count
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: cache
+        - uuid: c130d6495ae04acbbada8f25098df136
+          name: 'Unbound: Bogus answers per second'
+          type: DEPENDENT
+          key: unbound.num_answer_bogus
+          value_type: FLOAT
+          units: qps
+          description: 'Number of answers that failed DNSSEC validation (bogus) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_answer_bogus
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: dnssec
+        - uuid: 6d15db04b8cc40a496381f8a10f9f5a2
+          name: 'Unbound: FORMERR answers per second'
+          type: DEPENDENT
+          key: unbound.num_answer_rcode_FORMERR
+          value_type: FLOAT
+          units: qps
+          description: 'Number of answers sent with RCODE FORMERR (format error) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_answer_rcode_FORMERR
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: answers
+        - uuid: 41d6960e57d747c9bcd2ed69b83c1d8a
+          name: 'Unbound: NODATA answers per second'
+          type: DEPENDENT
+          key: unbound.num_answer_rcode_nodata
+          value_type: FLOAT
+          units: qps
+          description: 'Number of answers with NOERROR but empty answer section (NODATA) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_answer_rcode_nodata
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: answers
+        - uuid: 2b57ba38d39848a798c414e03f236314
+          name: 'Unbound: NOERROR answers per second'
+          type: DEPENDENT
+          key: unbound.num_answer_rcode_NOERROR
+          value_type: FLOAT
+          units: qps
+          description: 'Number of answers sent with RCODE NOERROR (successful) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_answer_rcode_NOERROR
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: answers
+        - uuid: a6df521f05464d05add1b5adfcf3610c
+          name: 'Unbound: NOTIMPL answers per second'
+          type: DEPENDENT
+          key: unbound.num_answer_rcode_NOTIMPL
+          value_type: FLOAT
+          units: qps
+          description: 'Number of answers sent with RCODE NOTIMPL (not implemented) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_answer_rcode_NOTIMPL
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: answers
+        - uuid: 124f209eb0ba4179a659b04e6da1206f
+          name: 'Unbound: NXDOMAIN answers per second'
+          type: DEPENDENT
+          key: unbound.num_answer_rcode_NXDOMAIN
+          value_type: FLOAT
+          units: qps
+          description: 'Number of answers sent with RCODE NXDOMAIN (non-existent domain) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_answer_rcode_NXDOMAIN
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: answers
+        - uuid: a6b9a294a43e465699dcedca2ed14bd8
+          name: 'Unbound: REFUSED answers per second'
+          type: DEPENDENT
+          key: unbound.num_answer_rcode_REFUSED
+          value_type: FLOAT
+          units: qps
+          description: 'Number of answers sent with RCODE REFUSED per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_answer_rcode_REFUSED
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: answers
+        - uuid: 8aeade189acc48f4a90c8f942d0f6bc1
+          name: 'Unbound: SERVFAIL answers per second'
+          type: DEPENDENT
+          key: unbound.num_answer_rcode_SERVFAIL
+          value_type: FLOAT
+          units: qps
+          description: 'Number of answers sent with RCODE SERVFAIL (server failure) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_answer_rcode_SERVFAIL
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: answers
+        - uuid: 24908afd90fb4a71a623c1d205500846
+          name: 'Unbound: Secure answers per second'
+          type: DEPENDENT
+          key: unbound.num_answer_secure
+          value_type: FLOAT
+          units: qps
+          description: 'Number of answers sent that were DNSSEC validated as secure per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_answer_secure
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: dnssec
+        - uuid: 33473da094784b5c8d113149ddb59967
+          name: 'Unbound: Aggressive NOERROR synthesized per second'
+          type: DEPENDENT
+          key: unbound.num_query_aggressive_NOERROR
+          value_type: FLOAT
+          units: qps
+          description: 'Number of NOERROR responses synthesized from NSEC/NSEC3 records (aggressive NSEC) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_aggressive_NOERROR
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: cache
+        - uuid: 1eea83f976c44050b3d3d872e6388554
+          name: 'Unbound: Aggressive NXDOMAIN synthesized per second'
+          type: DEPENDENT
+          key: unbound.num_query_aggressive_NXDOMAIN
+          value_type: FLOAT
+          units: qps
+          description: 'Number of NXDOMAIN responses synthesized from NSEC/NSEC3 records (aggressive NSEC) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_aggressive_NXDOMAIN
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: cache
+        - uuid: 0e8b32911f214f30a8ab61ec146caf81
+          name: 'Unbound: Auth zone queries failed (down) per second'
+          type: DEPENDENT
+          key: unbound.num_query_authzone_down
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries for a locally configured authoritative zone that was unavailable per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_authzone_down
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: queries
+        - uuid: 9e14e077f55440629266274e3789bda2
+          name: 'Unbound: Auth zone queries answered (up) per second'
+          type: DEPENDENT
+          key: unbound.num_query_authzone_up
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries answered from a locally configured authoritative zone that is up per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_authzone_up
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: queries
+        - uuid: ff34c125c8a54b6e84c685c234f272d7
+          name: 'Unbound: Queries with EDNS DO bit per second'
+          type: DEPENDENT
+          key: unbound.num_query_edns_DO
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries received with the DNSSEC OK (DO) bit set in EDNS per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_edns_DO
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: edns
+        - uuid: 4b0f4dc73c794d44bfb261003a22f4f7
+          name: 'Unbound: Queries with EDNS present per second'
+          type: DEPENDENT
+          key: unbound.num_query_edns_present
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries received that contained an EDNS OPT record per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_edns_present
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: edns
+        - uuid: 30452b495e214ff2bde1de743c75fab1
+          name: 'Unbound: Queries with AA flag per second'
+          type: DEPENDENT
+          key: unbound.num_query_flags_AA
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries received with the Authoritative Answer (AA) flag set per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_flags_AA
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-flags
+        - uuid: e06446c5efb44e02a8e9d3e9658f3ba7
+          name: 'Unbound: Queries with AD flag per second'
+          type: DEPENDENT
+          key: unbound.num_query_flags_AD
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries received with the Authentic Data (AD / DNSSEC) flag set per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_flags_AD
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-flags
+        - uuid: d1674b550f99465d8bf40a650014e3e9
+          name: 'Unbound: Queries with CD flag per second'
+          type: DEPENDENT
+          key: unbound.num_query_flags_CD
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries received with the Checking Disabled (CD / DNSSEC) flag set per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_flags_CD
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-flags
+        - uuid: 4d5611262df24222b33744bd59e1dcb4
+          name: 'Unbound: Queries with QR flag per second'
+          type: DEPENDENT
+          key: unbound.num_query_flags_QR
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries received with the QR (Query/Response) flag set per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_flags_QR
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-flags
+        - uuid: 096efb6fb0b44fcbb54ca63af3d33749
+          name: 'Unbound: Queries with RA flag per second'
+          type: DEPENDENT
+          key: unbound.num_query_flags_RA
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries received with the Recursion Available (RA) flag set per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_flags_RA
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-flags
+        - uuid: 773ec8f7b053476eb8de9372e83b57ea
+          name: 'Unbound: Queries with RD flag per second'
+          type: DEPENDENT
+          key: unbound.num_query_flags_RD
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries received with the Recursion Desired (RD) flag set per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_flags_RD
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-flags
+        - uuid: 3d44dc692f344039997ee1fd402b521c
+          name: 'Unbound: Queries with TC flag per second'
+          type: DEPENDENT
+          key: unbound.num_query_flags_TC
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries received with the TrunCation (TC) flag set per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_flags_TC
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-flags
+        - uuid: d5d98cb045bf4db3ae6220953c706d8a
+          name: 'Unbound: Queries with Z flag per second'
+          type: DEPENDENT
+          key: unbound.num_query_flags_Z
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries received with the reserved Z flag set per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_flags_Z
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-flags
+        - uuid: a367ac3d052a48c5b7d307e887b6805a
+          name: 'Unbound: HTTPS queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_https
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries received over DNS-over-HTTPS (DoH) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_https
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: transport
+        - uuid: a62cb30eface49239bb6d6831e7aaf5c
+          name: 'Unbound: IPv6 queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_ipv6
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries received from IPv6 clients per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_ipv6
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: transport
+        - uuid: ece7809f60c348f3aed5f05a2487613b
+          name: 'Unbound: NOTIFY opcode queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_opcode_NOTIFY
+          value_type: FLOAT
+          units: qps
+          description: 'Number of DNS NOTIFY opcode messages received per second (zone change notifications).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_opcode_NOTIFY
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-types
+        - uuid: 62f4ceed7502441baee2f7b5dfbfd667
+          name: 'Unbound: QUERY opcode queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_opcode_QUERY
+          value_type: FLOAT
+          units: qps
+          description: 'Number of standard DNS QUERY opcode queries received per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_opcode_QUERY
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-types
+        - uuid: 35fb69782ed24be2a47e0d01411e429e
+          name: 'Unbound: Rate-limited queries per second (global limit)'
+          type: DEPENDENT
+          key: unbound.num_query_ratelimited
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries dropped by the global query rate limiter per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_ratelimited
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: queries
+        - uuid: 0673b206b7694d15aa9decfcea4a5312
+          name: 'Unbound: ECS (subnet) queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_subnet
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries that contain an EDNS Client Subnet (ECS) option per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_subnet
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: edns
+        - uuid: 967d1bfe12df4c7da6d083822cd6e5b8
+          name: 'Unbound: TCP queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_tcp
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries received over TCP per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_tcp
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: transport
+        - uuid: 9f5020de705f4aae926f451dfa9547d9
+          name: 'Unbound: Outgoing TCP queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_tcpout
+          value_type: FLOAT
+          units: qps
+          description: 'Number of TCP queries sent to authoritative servers per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_tcpout
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: transport
+        - uuid: 198685a0a45c46178d6443bd04f6d21c
+          name: 'Unbound: TLS queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_tls
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries received over DNS-over-TLS (DoT) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_tls
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: transport
+        - uuid: bcf9323cf2bf4532ba8029c7c4c639d0
+          name: 'Unbound: A queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_type_A
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries for DNS type A (IPv4 address) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_type_A
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-types
+        - uuid: 2fe4ad8f762b46a2907d2c7e79f94b19
+          name: 'Unbound: AAAA queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_type_AAAA
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries for DNS type AAAA (IPv6 address) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_type_AAAA
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-types
+        - uuid: 87d52b207f70418891b1feff0aea3bf3
+          name: 'Unbound: HTTPS queries per second (type)'
+          type: DEPENDENT
+          key: unbound.num_query_type_HTTPS
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries for DNS type HTTPS (SVCB variant for HTTPS) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_type_HTTPS
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-types
+        - uuid: 4f25fb05db3f4b9896fb7ffce9f14297
+          name: 'Unbound: MX queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_type_MX
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries for DNS type MX (mail exchanger) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_type_MX
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-types
+        - uuid: cc1956e8bee24352991a5c56ee9020a4
+          name: 'Unbound: NS queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_type_NS
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries for DNS type NS (name server) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_type_NS
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-types
+        - uuid: 57f8895cd6744205bef3a55fbb7fbc03
+          name: 'Unbound: Other query types per second'
+          type: DEPENDENT
+          key: unbound.num_query_type_other
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries for DNS types not individually tracked, per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_type_other
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-types
+        - uuid: 177d0530bacd4ac4851fd6064c606bed
+          name: 'Unbound: PTR queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_type_PTR
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries for DNS type PTR (reverse DNS lookup) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_type_PTR
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-types
+        - uuid: 6020eea9c394494a92c9a14d81cd854a
+          name: 'Unbound: SOA queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_type_SOA
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries for DNS type SOA (start of authority) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_type_SOA
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-types
+        - uuid: 32d0ae317b8740128b52318750965fb3
+          name: 'Unbound: SRV queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_type_SRV
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries for DNS type SRV (service locator) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_type_SRV
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-types
+        - uuid: 4bdd94224c3947f4959a7d9d55ccf80d
+          name: 'Unbound: SSHFP queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_type_SSHFP
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries for DNS type SSHFP (SSH fingerprint) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_type_SSHFP
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-types
+        - uuid: 171e5824621145599fb9d0099207fb63
+          name: 'Unbound: SVCB queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_type_SVCB
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries for DNS type SVCB (service binding) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_type_SVCB
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-types
+        - uuid: 4cf590bd0e4e41c697f522c9c234fcfe
+          name: 'Unbound: TXT queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_type_TXT
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries for DNS type TXT per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_type_TXT
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: query-types
+        - uuid: d1fdeefbd2f74a28ba9dca1045d531f4
+          name: 'Unbound: Outgoing UDP queries per second'
+          type: DEPENDENT
+          key: unbound.num_query_udpout
+          value_type: FLOAT
+          units: qps
+          description: 'Number of UDP queries sent to authoritative servers per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_query_udpout
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: transport
+        - uuid: 503831a11d664fe5abf4b6942804916f
+          name: 'Unbound: Bogus RRset entries per second'
+          type: DEPENDENT
+          key: unbound.num_rrset_bogus
+          value_type: FLOAT
+          units: qps
+          description: 'Number of RRset entries that were found bogus during DNSSEC validation per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.num_rrset_bogus
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: dnssec
+        - uuid: 0a0467a98390422b88844c3033035cc0
+          name: 'Unbound: Config option num-queries-per-thread'
+          key: unbound.option.num-queries-per-thread
+          delay: 30m
+          description: |
+            The number of queries that every thread will service simultaneously. If more queries arrive that need servicing, and no queries can be jostled out (see jostle-timeout), then the queries are dropped. This forces the client to resend after a timeout; allowing the server time to work on the existing queries. Default depends on compile options.
+            
+            Default: 2048 (libevent) / 512 (minievent) / 24 (windows)
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 4h
+          tags:
+            - tag: component
+              value: config
+        - uuid: 16ce320163234d42978600ddd25b588d
+          name: 'Unbound: RRset cache entries'
+          type: DEPENDENT
+          key: unbound.rrset_cache_count
+          value_type: FLOAT
+          description: 'The number of RRsets in the rrset cache. This includes rrsets used by the messages in the message cache, but also delegation information.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.rrset_cache_count
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: cache
+        - uuid: a2b7b5517d2845ba90181ec092aa1288
+          name: 'Unbound: stats_noreset'
+          key: unbound.stats_noreset
+          delay: 5m
+          history: '0'
+          value_type: TEXT
+          description: |
+            Unbound DNS server statistics obtained using `unbound-control stats_noreset`, which were further processed and converted to JSON using the `unbound-stats_to_json.pl` script. 
+            Modifications to the script:
+            - a constant list of items; if any item is missing in a specific version of unbound, it returns zero,
+            - underscores are used instead of periods, e.g., mem.cache.message becomes mem_cache_message,
+            - simplification of the histogram to a smaller number of items,
+            - items for threads (threads0.*, threads1.*, ...),
+            - less common resource record types are grouped under the "other" entry
+          tags:
+            - tag: stage
+              value: raw
+        - uuid: 5955946a52c14fb58223b47319ef4d44
+          name: 'Unbound: Uptime'
+          type: DEPENDENT
+          key: unbound.time_up
+          value_type: FLOAT
+          units: s
+          description: 'Time in seconds since the unbound process was started.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.time_up
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: general
+          triggers:
+            - uuid: 5f8f5e7a5109425b8a85df9ff4c9b69a
+              expression: 'last(/DNS unbound/unbound.time_up) < 1h'
+              name: 'Unbound: Uptime < 1h'
+              opdata: '{ITEM.VALUE}'
+              priority: INFO
+              description: 'The unbound process has been restarted; its uptime is less than 1 hour.'
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: dns
+                - tag: software
+                  value: unbound
+        - uuid: 04aeca172bb8458a9673a29676dc57af
+          name: 'Unbound: Cache hits per second'
+          type: DEPENDENT
+          key: unbound.total_num_cachehits
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries answered from cache per second (no recursion needed).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_num_cachehits
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: queries
+        - uuid: 20916d6db68448e394c747a559a11483
+          name: 'Unbound: Cache misses per second'
+          type: DEPENDENT
+          key: unbound.total_num_cachemiss
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries that required full recursive resolution per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_num_cachemiss
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: queries
+        - uuid: 560139f667094905b72ca2eb8eb369f1
+          name: 'Unbound: Expired answers per second'
+          type: DEPENDENT
+          key: unbound.total_num_expired
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries answered with expired (stale) cache entries per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_num_expired
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: queries
+        - uuid: c0cdbb2783da4a8c9ee26c9ccb620158
+          name: 'Unbound: Prefetch queries per second'
+          type: DEPENDENT
+          key: unbound.total_num_prefetch
+          value_type: FLOAT
+          units: qps
+          description: 'Number of cache prefetch operations performed per second (TTL near expiry).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_num_prefetch
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: queries
+        - uuid: 2ddbab44e6e54b31a453a66ade275323
+          name: 'Unbound: Total queries per second'
+          type: DEPENDENT
+          key: unbound.total_num_queries
+          value_type: FLOAT
+          units: qps
+          description: 'Total number of queries received by unbound, expressed as a rate per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_num_queries
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: queries
+        - uuid: 55b1017cf8f74b20bcb221c9efd39352
+          name: 'Unbound: Client-only DNS cookies per second'
+          type: DEPENDENT
+          key: unbound.total_num_queries_cookie_client
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries carrying only a client DNS cookie (no server cookie) per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_num_queries_cookie_client
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: queries
+        - uuid: fd3d36cce76046d4ac0c881a62ff93ad
+          name: 'Unbound: Invalid DNS cookies per second'
+          type: DEPENDENT
+          key: unbound.total_num_queries_cookie_invalid
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries carrying an invalid or malformed DNS cookie per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_num_queries_cookie_invalid
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: queries
+        - uuid: 85eb791fccd94111a7ff8d471d4a3474
+          name: 'Unbound: Valid DNS cookies per second'
+          type: DEPENDENT
+          key: unbound.total_num_queries_cookie_valid
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries carrying a valid DNS cookie per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_num_queries_cookie_valid
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: queries
+        - uuid: 1e4c8095bc0644cebed5b96aa014ce4b
+          name: 'Unbound: Request dropped due discard-timeout'
+          type: DEPENDENT
+          key: unbound.total_num_queries_discard_timeout
+          value_type: FLOAT
+          units: qps
+          description: 'Recursion requests are dropped per second when the discard-timeout is reached. Starting with version 1.23. In versions 1.20 through 1.22, they were included in counter total_requestlist_exceeded.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_num_queries_discard_timeout
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: performance
+        - uuid: 17c92564b2814e9887cd981b8a190e54
+          name: 'Unbound: Per IP rate-limited queries per second'
+          type: DEPENDENT
+          key: unbound.total_num_queries_ip_ratelimited
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries dropped due to per-IP rate limiting per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_num_queries_ip_ratelimited
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: queries
+        - uuid: fa8be0d5672a4053912d6a3132fed0b6
+          name: 'Unbound: Timed-out queries per second'
+          type: DEPENDENT
+          key: unbound.total_num_queries_timed_out
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries that timed out and were dropped per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_num_queries_timed_out
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: queries
+        - uuid: 41cd5bf59b4e490e83a0d31b77d55ae8
+          name: 'Unbound: Request dropped due wait-limit'
+          type: DEPENDENT
+          key: unbound.total_num_queries_wait_limit
+          value_type: FLOAT
+          units: qps
+          description: |
+            Recursion requests are dropped on a per-second basis when the wait-limit is reached. The wait-limit defines the maximum number of pending replies that may wait for recursion per IP address.
+            Starting with version 1.23. In versions 1.20 through 1.22, they were included in counter total_requestlist_exceeded.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_num_queries_wait_limit
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: performance
+        - uuid: b955c7d5c5b04a86a9f4ccc3048bdaa1
+          name: 'Unbound: Recursive replies per second'
+          type: DEPENDENT
+          key: unbound.total_num_recursivereplies
+          value_type: FLOAT
+          units: qps
+          description: 'Number of replies sent to the query list after recursive resolution per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_num_recursivereplies
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: queries
+        - uuid: a8b9135248cf494ca9b53e5c2ac0cd91
+          name: 'Unbound: Average recursion time'
+          type: DEPENDENT
+          key: unbound.total_recursion_time_avg
+          value_type: FLOAT
+          units: s
+          description: 'Average time in seconds spent on recursive resolution since startup.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_recursion_time_avg
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: performance
+          triggers:
+            - uuid: a65680e7f429499cb3e18410656cf869
+              expression: 'last(/DNS unbound/unbound.total_recursion_time_avg)>0.500'
+              name: 'Unbound: Average recursion time > 500ms'
+              priority: WARNING
+              description: 'Average time it took to answer queries that needed recursive processing. Note that queries that were answered from the cache are not in this average.'
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: dns
+                - tag: software
+                  value: unbound
+        - uuid: 0a2dea30b1494be58f703cfbd3f2a120
+          name: 'Unbound: Median recursion time'
+          type: DEPENDENT
+          key: unbound.total_recursion_time_median
+          value_type: FLOAT
+          units: s
+          description: 'Median time in seconds spent on recursive resolution (histogram-based estimate).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_recursion_time_median
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: performance
+        - uuid: f3e816e5dfe64ba2b10a6fe02bb96d3b
+          name: 'Unbound: Request list average length'
+          type: DEPENDENT
+          key: unbound.total_requestlist_avg
+          value_type: FLOAT
+          description: 'Average number of queries in the resolver request list at the time of an insertion.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_requestlist_avg
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: performance
+        - uuid: 8293aa590edd4b4b902f07ae966a6ba3
+          name: 'Unbound: Request list exceeded per second'
+          type: DEPENDENT
+          key: unbound.total_requestlist_exceeded
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries dropped because the request list was full per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_requestlist_exceeded
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: performance
+        - uuid: 39e106d0801e4e60bcefa35be40dace5
+          name: 'Unbound: Request list maximum length'
+          type: DEPENDENT
+          key: unbound.total_requestlist_max
+          value_type: FLOAT
+          description: 'Maximum number of queries in the resolver request list observed since startup.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_requestlist_max
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: performance
+        - uuid: cc8a02ff888849cea35aaea9fdf863f0
+          name: 'Unbound: Request list overwritten per second'
+          type: DEPENDENT
+          key: unbound.total_requestlist_overwritten
+          value_type: FLOAT
+          units: qps
+          description: 'Number of requests overwritten in the request list per second.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_requestlist_overwritten
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: performance
+          triggers:
+            - uuid: 3eb636b317db4eb884e5b936f50d6c80
+              expression: 'last(/DNS unbound/unbound.total_requestlist_overwritten) > {$UNBOUND.REQUESTLIST_OVERWRITTEN_LIMIT}'
+              name: 'Unbound: Number of overwritten requests has exceeded limit'
+              opdata: '{ITEM.VALUE}'
+              priority: INFO
+              description: 'The server is overloaded. The number of requests in the request list that were overwritten by newer entries has exceeded the limit. This happens if there is a flood of queries that recursive processing and the server has a hard time.'
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: dns
+                - tag: software
+                  value: unbound
+        - uuid: 8247a993e67c40588444fd417a1087d8
+          name: 'Unbound: Unwanted queries per second'
+          type: DEPENDENT
+          key: unbound.unwanted_queries
+          value_type: FLOAT
+          units: qps
+          description: 'Number of queries per second that were refused or dropped because they failed the access control settings.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.unwanted_queries
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: security
+        - uuid: 5f173cb8efb449beb8c93147bd5659f7
+          name: 'Unbound: Unwanted replies per second'
+          type: DEPENDENT
+          key: unbound.unwanted_replies
+          value_type: FLOAT
+          units: qps
+          description: 'Replies per second that were unwanted or unsolicited. Could have been random traffic, delayed duplicates, very late answers, or could be spoofing attempts. Some low level of late answers and delayed duplicates are to be expected with the UDP protocol. Very high values could indicate a threat (spoofing).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.unwanted_replies
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: unbound.stats_noreset
+          tags:
+            - tag: component
+              value: security
+        - uuid: 07997dd6c8ae4dd6a151cff9c53e127c
+          name: 'Unbound: Version of unbound process'
+          key: unbound.version
+          delay: 30m
+          value_type: CHAR
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 12h
+      tags:
+        - tag: component
+          value: dns
+        - tag: software
+          value: unbound
+      macros:
+        - macro: '{$UNBOUND.REQUESTLIST_OVERWRITTEN_LIMIT}'
+          value: '0'
+          description: 'Limit for total_requestlist_overwritten'
+      dashboards:
+        - uuid: 6579bc4e82e446719524f8824b94524e
+          name: Unbound
+          display_period: '60'
+          pages:
+            - display_period: '600'
+              widgets:
+                - type: svggraph
+                  name: 'Cache efficiency'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '1'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: Cache hits per second'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: Cache misses per second'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: WPOET
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Request list size'
+                  'y': '5'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: Config option num-queries-per-thread'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: Request list average length'
+                    - type: STRING
+                      name: ds.0.items.2
+                      value: 'Unbound: Request list maximum length'
+                    - type: INTEGER
+                      name: ds.0.missingdatafunc
+                      value: '3'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: OLQXE
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Memory usage'
+                  'y': '10'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: Memory used by iterator module'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: Memory used by message cache'
+                    - type: STRING
+                      name: ds.0.items.2
+                      value: 'Unbound: Memory used by RRset cache'
+                    - type: STRING
+                      name: ds.0.items.3
+                      value: 'Unbound: Memory used by stream wait buffer'
+                    - type: STRING
+                      name: ds.0.items.4
+                      value: 'Unbound: Memory used by subnet module'
+                    - type: STRING
+                      name: ds.0.items.5
+                      value: 'Unbound: Memory used by validator module'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: TGURY
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Unwanted queries, unwanted replies'
+                  'y': '16'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: Unwanted queries per second'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: Unwanted replies per second'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: LAFRZ
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Recursion performance'
+                  x: '36'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: Median recursion time'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: Average recursion time'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: INTEGER
+                      name: ds.1.axisy
+                      value: '1'
+                    - type: STRING
+                      name: ds.1.color
+                      value: 0040FF
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'Unbound: Recursive replies per second'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: USZXF
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                - type: svggraph
+                  name: Ratelimit
+                  x: '36'
+                  'y': '5'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: Per IP rate-limited queries per second'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: Rate-limited queries per second (global limit)'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: WMOOW
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Cache entry count'
+                  x: '36'
+                  'y': '10'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: Infrastructure cache entries'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: Key cache entries'
+                    - type: STRING
+                      name: ds.0.items.2
+                      value: 'Unbound: Message cache entries'
+                    - type: STRING
+                      name: ds.0.items.3
+                      value: 'Unbound: RRset cache entries'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: VVOIC
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: DNSSEC
+                  x: '36'
+                  'y': '16'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: Bogus answers per second'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: Secure answers per second'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: ds.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'Unbound: Queries with AD flag per second'
+                    - type: STRING
+                      name: ds.1.items.1
+                      value: 'Unbound: Queries with EDNS DO bit per second'
+                    - type: INTEGER
+                      name: ds.1.stacked
+                      value: '1'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: DZDNF
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Issues and security'
+                  x: '36'
+                  'y': '21'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '1'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: Auth zone queries failed (down) per second'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: Request list exceeded per second'
+                    - type: STRING
+                      name: ds.0.items.2
+                      value: 'Unbound: Timed-out queries per second'
+                    - type: STRING
+                      name: ds.0.items.3
+                      value: 'Unbound: REFUSED answers per second'
+                    - type: STRING
+                      name: ds.0.items.4
+                      value: 'Unbound: Expired answers per second'
+                    - type: STRING
+                      name: ds.0.items.5
+                      value: 'Unbound: Request dropped due discard-timeout'
+                    - type: STRING
+                      name: ds.0.items.6
+                      value: 'Unbound: Request dropped due wait-limit'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: XUQCW
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+            - name: 'Query stats'
+              display_period: '600'
+              widgets:
+                - type: svggraph
+                  name: 'Queries overview'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: FFD54F
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '1'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: Total queries per second'
+                    - type: STRING
+                      name: ds.1.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'Unbound: Prefetch queries per second'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: EEDJM
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Query types 1'
+                  'y': '5'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: AAAA queries per second'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: A queries per second'
+                    - type: STRING
+                      name: ds.0.items.2
+                      value: 'Unbound: HTTPS queries per second (type)'
+                    - type: STRING
+                      name: ds.0.items.3
+                      value: 'Unbound: MX queries per second'
+                    - type: STRING
+                      name: ds.0.items.4
+                      value: 'Unbound: NS queries per second'
+                    - type: STRING
+                      name: ds.0.items.5
+                      value: 'Unbound: PTR queries per second'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: INTEGER
+                      name: ds.0.transparency
+                      value: '4'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: MQRES
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Answers by RCODE'
+                  'y': '11'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: FORMERR answers per second'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: NODATA answers per second'
+                    - type: STRING
+                      name: ds.0.items.2
+                      value: 'Unbound: NOERROR answers per second'
+                    - type: STRING
+                      name: ds.0.items.3
+                      value: 'Unbound: NOTIMPL answers per second'
+                    - type: STRING
+                      name: ds.0.items.4
+                      value: 'Unbound: NXDOMAIN answers per second'
+                    - type: STRING
+                      name: ds.0.items.5
+                      value: 'Unbound: REFUSED answers per second'
+                    - type: STRING
+                      name: ds.0.items.6
+                      value: 'Unbound: SERVFAIL answers per second'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: VMNPW
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Transport protocols to authoritative servers'
+                  'y': '17'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: Outgoing TCP queries per second'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: Outgoing UDP queries per second'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: RYXMB
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Queries transport protocols'
+                  x: '36'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: HTTPS queries per second'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: TCP queries per second'
+                    - type: STRING
+                      name: ds.0.items.2
+                      value: 'Unbound: TLS queries per second'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: ds.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'Unbound: Total queries per second'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: YCPIG
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Query types 2'
+                  x: '36'
+                  'y': '5'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: Other query types per second'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: SOA queries per second'
+                    - type: STRING
+                      name: ds.0.items.2
+                      value: 'Unbound: SRV queries per second'
+                    - type: STRING
+                      name: ds.0.items.3
+                      value: 'Unbound: SSHFP queries per second'
+                    - type: STRING
+                      name: ds.0.items.4
+                      value: 'Unbound: SVCB queries per second'
+                    - type: STRING
+                      name: ds.0.items.5
+                      value: 'Unbound: TXT queries per second'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: ISRVR
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: Histogram
+                  x: '36'
+                  'y': '11'
+                  width: '36'
+                  height: '7'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: Queries with reply time between 0.064s and 0.128s'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Unbound: Queries with reply time between 0.128s and 0.256s'
+                    - type: STRING
+                      name: ds.0.items.2
+                      value: 'Unbound: Queries with reply time between 0.256s and 0.512s'
+                    - type: STRING
+                      name: ds.0.items.3
+                      value: 'Unbound: Queries with reply time between 0.512s and 1s'
+                    - type: STRING
+                      name: ds.0.items.4
+                      value: 'Unbound: Queries with reply time between 1s and 2s'
+                    - type: STRING
+                      name: ds.0.items.5
+                      value: 'Unbound: Queries with reply time between 2s and 4s'
+                    - type: STRING
+                      name: ds.0.items.6
+                      value: 'Unbound: Queries with reply time between 0.000s and 0.016s'
+                    - type: STRING
+                      name: ds.0.items.7
+                      value: 'Unbound: Queries with reply time between 0.016s and 0.032s'
+                    - type: STRING
+                      name: ds.0.items.8
+                      value: 'Unbound: Queries with reply time between 0.032s and 0.064s'
+                    - type: STRING
+                      name: ds.0.items.9
+                      value: 'Unbound: Queries with reply time between 4s and 512s'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: PDUST
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Queries over IPv6'
+                  x: '36'
+                  'y': '18'
+                  width: '36'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Unbound: IPv6 queries per second'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: QYLTO
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+  triggers:
+    - uuid: cf50fa3aa287455b8bc0fe7f49db538c
+      expression: 'last(/DNS unbound/unbound.total_requestlist_max) > ( last(/DNS unbound/unbound.option.num-queries-per-thread) * 0.75 )'
+      name: 'Request list maximum length > 75% num-queries-per-thread'
+      priority: WARNING
+      description: 'The request list is approaching its maximum capacity. Consider increasing num-queries-per-thread or investigating query load.'
+      manual_close: 'YES'
+      tags:
+        - tag: component
+          value: dns
+        - tag: software
+          value: unbound
