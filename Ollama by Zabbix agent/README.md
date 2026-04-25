@@ -75,11 +75,34 @@ ollama pull gemma3:270m
 
 If you prefer a different model, change the default value of `{$OLLAMA.PROBE.MODEL}` either in the template (globally) or as a host-level macro override.
 
-### 4. Import the template
+### 4. Grant log file access to the Zabbix agent
+
+The log monitoring items read `/var/log/daemon.log` (or the path configured in `{$OLLAMA.LOG_FILE}`). On Ubuntu and Debian this file is owned by `root:adm` with permissions `640`, so the `zabbix` user must be a member of the `adm` group.
+
+```bash
+usermod -aG adm zabbix
+systemctl restart zabbix-agent   # or zabbix-agent2
+```
+
+Verify access before linking the template:
+
+```bash
+sudo -u zabbix tail -n 5 /var/log/daemon.log
+```
+
+The command should return log lines without a permission error. If Ollama log entries are written to a different file on your system, set the `{$OLLAMA.LOG_FILE}` macro accordingly (see [Macros](#macros)).
+
+> **Note:** Adding `zabbix` to the `adm` group grants read access to all files readable by that group (`/var/log/auth.log`, `/var/log/syslog`, etc.), not just `daemon.log`. This is standard practice for Zabbix log monitoring on Debian-based systems. If your security policy requires tighter scoping, use a dedicated ACL instead:
+> ```bash
+> setfacl -m u:zabbix:r /var/log/daemon.log
+> # To make the ACL persistent across log rotations, add a logrotate postrotate script.
+> ```
+
+### 5. Import the template
 
 In the Zabbix frontend go to **Data collection → Templates** and import `zbx_export_templates_ollama.yaml`.
 
-### 5. Link the template to hosts
+### 6. Link the template to hosts
 
 Go to the host configuration, open the **Templates** tab, and add **Ollama by Zabbix agent**.
 
@@ -95,6 +118,8 @@ All template parameters are stored as user macros. They can be overridden at the
 | `{$OLLAMA.PROBE.MODEL}` | `gemma3:270m` | Model used for the inference probe. Must be pulled on every monitored host. Use a small, fast model. |
 | `{$OLLAMA.PROBE.KEEP_ALIVE}` | `30m` | How long to keep the probe model loaded in VRAM after the test. `0` = unload immediately, `-1` = keep permanently, `30m` = 30 minutes. |
 | `{$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN}` | `1` | Warning threshold for probe `total_duration` in seconds. Adjust to match the expected inference speed on the given hardware (see [Tuning](#tuning)). |
+| `{$OLLAMA.LOG_FILE}` | `/var/log/daemon.log` | Path to the log file containing Ollama journal entries. Change if your rsyslog configuration writes daemon-facility logs elsewhere. |
+| `{$OLLAMA.LOG.CHECK_INTERVAL}` | `2m` | Polling interval for log-based items. Shorter intervals reduce detection latency; increase on hosts with high log volume. |
 
 ## Items
 
@@ -131,6 +156,15 @@ All template parameters are stored as user macros. They can be overridden at the
 | Ollama: Probe load_duration | `ollama.probe.load_duration` | dependent | Time spent loading the model for the probe, in seconds. Zero if the model was already in VRAM. |
 | Ollama: Probe total_duration | `ollama.probe.total_duration` | dependent | Total wall-clock time for the probe request, in seconds. |
 
+### Log monitoring – GPU errors
+
+| Item | Key | Interval | Description |
+|---|---|---|---|
+| Ollama: Log - GPU VRAM recovery failures | `log[{$OLLAMA.LOG_FILE},"ollama.*gpu VRAM usage didn't recover within timeout",,,skip]` | `{$OLLAMA.LOG.CHECK_INTERVAL}` | Detects VRAM not released after model unload. Repeated occurrences indicate a GPU scheduler problem that causes Ollama to silently fall back to CPU inference. |
+| Ollama: Log - GPU discovery failures | `log[{$OLLAMA.LOG_FILE},"ollama.*failure during GPU discovery",,,skip]` | `{$OLLAMA.LOG.CHECK_INTERVAL}` | Detects GPU enumeration failure during model runner startup. Ollama silently falls back to CPU — the service appears healthy but performance is severely degraded. |
+
+Both items use `skip` mode: only log lines written since the last check are evaluated. The Zabbix agent must have read access to `{$OLLAMA.LOG_FILE}` (see [Setup step 4](#4-grant-log-file-access-to-the-zabbix-agent)).
+
 ### Version
 
 | Item | Key | Interval | Description |
@@ -155,6 +189,8 @@ All template parameters are stored as user macros. They can be overridden at the
 | Ollama: Probe request returned an error | Average | Probe response contains a non-empty `error` field. Covers API errors, HTTP errors (e.g. 503), network timeouts, and empty responses. Requires manual close. Depends on the port trigger. |
 | Ollama: Probe response - no response (timeout/empty) | High | Probe received no usable data at all (`curl_failed` or `empty_response`). Indicates the engine is unresponsive or overloaded. Requires manual close. Depends on the port trigger. |
 | Ollama: Probe total_duration exceeds {$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN} | Warning | Inference took longer than the configured threshold. Requires manual close. Depends on the port trigger. |
+| Ollama: GPU VRAM did not recover within timeout | Average | Log entry detected: VRAM not released after model unload. Ollama may fall back to CPU for subsequent models. Requires manual close. |
+| Ollama: GPU discovery failed - inference may be running on CPU | High | Log entry detected: GPU enumeration failed during runner startup. Service appears healthy but inference is running on CPU. Requires manual close. |
 
 ### Trigger dependencies
 
