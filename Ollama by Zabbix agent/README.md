@@ -247,6 +247,6 @@ The template includes a built-in dashboard named **Ollama** with the following w
 
 ## Tested with
 
-- Ollama 0.5.x on Ubuntu 22.04 and 24.04
-- Zabbix 7.4 with classic Zabbix agent
+- Ollama 0.20.x on Ubuntu 22.04 and 24.04
+- Zabbix 7.4 with classic Zabbix agent 2
 - Models: gemma3:270m, llama3.2:3b, mistral:7b

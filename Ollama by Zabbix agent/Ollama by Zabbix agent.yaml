@@ -43,7 +43,7 @@ zabbix_export:
         Ollama >= 0.3, Zabbix 7.4, Ubuntu 22.04/24.04
       vendor:
         name: lpavlicek
-        version: 7.4-1
+        version: 7.4-2
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -500,7 +500,8 @@ zabbix_export:
           name: Ollama
           display_period: '120'
           pages:
-            - widgets:
+            - display_period: '120'
+              widgets:
                 - type: item
                   name: 'Ollama alive'
                   width: '12'
@@ -518,6 +519,9 @@ zabbix_export:
                       value:
                         host: 'Ollama by Zabbix agent'
                         key: 'net.tcp.service[http,localhost,{$OLLAMA.PORT}]'
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '0'
                     - type: INTEGER
                       name: show.0
                       value: '1'
@@ -567,6 +571,9 @@ zabbix_export:
                       name: reference
                       value: UPJTS
                     - type: INTEGER
+                      name: rf_rate
+                      value: '600'
+                    - type: INTEGER
                       name: righty
                       value: '0'
                     - type: INTEGER
@@ -603,6 +610,9 @@ zabbix_export:
                       name: reference
                       value: DBFQG
                     - type: INTEGER
+                      name: rf_rate
+                      value: '120'
+                    - type: INTEGER
                       name: righty
                       value: '0'
                 - type: svggraph
@@ -636,6 +646,9 @@ zabbix_export:
                       name: reference
                       value: FWMVT
                     - type: INTEGER
+                      name: rf_rate
+                      value: '120'
+                    - type: INTEGER
                       name: righty
                       value: '0'
                 - type: item
@@ -656,6 +669,9 @@ zabbix_export:
                       value:
                         host: 'Ollama by Zabbix agent'
                         key: ollama.models.available.count
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '600'
                     - type: INTEGER
                       name: show.0
                       value: '1'
@@ -728,6 +744,9 @@ zabbix_export:
                         host: 'Ollama by Zabbix agent'
                         key: 'ollama.version.get[{$OLLAMA.PORT}]'
                     - type: INTEGER
+                      name: rf_rate
+                      value: '900'
+                    - type: INTEGER
                       name: show.0
                       value: '1'
                     - type: INTEGER
@@ -765,6 +784,9 @@ zabbix_export:
                       name: reference
                       value: VMVFB
                     - type: INTEGER
+                      name: rf_rate
+                      value: '120'
+                    - type: INTEGER
                       name: righty
                       value: '0'
                 - type: svggraph
@@ -790,6 +812,9 @@ zabbix_export:
                       name: reference
                       value: SICXW
                     - type: INTEGER
+                      name: rf_rate
+                      value: '120'
+                    - type: INTEGER
                       name: righty
                       value: '0'
                 - type: item
@@ -809,6 +834,9 @@ zabbix_export:
                       value:
                         host: 'Ollama by Zabbix agent'
                         key: 'proc.num[ollama]'
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '120'
                     - type: INTEGER
                       name: show.0
                       value: '1'
