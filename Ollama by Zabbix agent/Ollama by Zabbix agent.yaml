@@ -1,0 +1,837 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 7d56eced6d2e4da8a78bfc9d05d23071
+      template: 'Ollama by Zabbix agent'
+      name: 'Ollama by Zabbix agent'
+      description: |
+        ## Ollama monitoring via Zabbix agent
+        
+        This template monitors the Ollama LLM inference server running on localhost
+        using Zabbix agent UserParameters backed by a wrapper shell script.
+        
+        ### Requirements
+        
+        1. Install the wrapper script on each monitored host:
+             cp zabbix_ollama.sh /etc/zabbix/scripts/ollama/zabbix_ollama.sh
+             chmod 0755 /etc/zabbix/scripts/ollama/zabbix_ollama.sh
+             chown root:root /etc/zabbix/scripts/ollama/zabbix_ollama.sh
+        
+        2. Deploy the UserParameter configuration:
+             cp userparameter_ollama.conf /etc/zabbix/zabbix_agentd.d/
+             systemctl reload zabbix-agent   # or zabbix-agent2
+        
+        3. The Zabbix agent must NOT need UnsafeUserParameters=1.
+           All input validation is handled by the wrapper script.
+        
+        ### Macros to review before linking
+        
+        - {$OLLAMA.PORT}               - Ollama API port (default: 11434)
+        - {$OLLAMA.PROBE.MODEL}        - Model used for the inference probe.
+                                         Must exist on every monitored host.
+                                         Change to a model you have downloaded.
+        - {$OLLAMA.PROBE.KEEP_ALIVE}   - How long to keep the probe model loaded
+                                         after the test (0 = unload immediately,
+                                         -1 = keep permanently, 30m = default).
+        - {$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN} - Warning threshold for probe
+                                         total_duration in seconds (default: 1s).
+        
+        ### Tested with
+        Ollama >= 0.3, Zabbix 7.4, Ubuntu 22.04/24.04
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: b49908b36e3d4963b52b78bda2b92c34
+          name: 'Ollama: Alive'
+          key: 'net.tcp.service[http,localhost,{$OLLAMA.PORT}]'
+          delay: 2m
+          description: |
+            Checks whether the Ollama HTTP API is reachable on TCP port {$OLLAMA.PORT}.
+            Returns 1 if the port is open, 0 if not.
+            This is a lightweight connectivity check that does not invoke the API.
+          valuemap:
+            name: 'Ollama alive'
+          tags:
+            - tag: component
+              value: network
+          triggers:
+            - uuid: a7a4bb781af44b1ea1804c5f497ad942
+              expression: 'last(/Ollama by Zabbix agent/net.tcp.service[http,localhost,{$OLLAMA.PORT}])=0'
+              name: 'Ollama: Service is not responding on port {$OLLAMA.PORT}'
+              priority: HIGH
+              description: |
+                Ollama is not accepting TCP connections on port {$OLLAMA.PORT} on localhost.
+                The service is likely stopped or crashed.
+                Check: systemctl status ollama
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: eeec7ba9db9a4aaea77720e9d6e1b658
+          name: 'Ollama: Available models count'
+          type: DEPENDENT
+          key: ollama.models.available.count
+          description: 'Number of models available locally (pulled and stored on disk).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.models.length()
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '-1'
+          master_item:
+            key: 'ollama.models.available.get[{$OLLAMA.PORT}]'
+          tags:
+            - tag: component
+              value: model
+          triggers:
+            - uuid: 3f17bf39e2864642b5cc0db1aa4493d5
+              expression: 'last(/Ollama by Zabbix agent/ollama.models.available.count)=-1'
+              name: 'Ollama: Failed to retrieve available models list'
+              priority: WARNING
+              description: |
+                The /api/tags endpoint returned an unexpected response.
+                Ollama may be running but the API is malfunctioning, or the response was empty.
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Ollama: Service is not responding on port {$OLLAMA.PORT}'
+                  expression: 'last(/Ollama by Zabbix agent/net.tcp.service[http,localhost,{$OLLAMA.PORT}])=0'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 8c1115ff6aa142ee9ecd9f402b674a24
+          name: 'Ollama: Get available models'
+          key: 'ollama.models.available.get[{$OLLAMA.PORT}]'
+          delay: 10m
+          history: '0'
+          value_type: TEXT
+          description: |
+            Master item. Calls GET /api/tags and stores the raw JSON response.
+            History is not kept (history=0); dependent items extract individual metrics.
+            On error or timeout the script returns a JSON object with an "error" key.
+          timeout: 4s
+          tags:
+            - tag: component
+              value: model
+        - uuid: 8efdcb47c07142929b1ef5ce75cfe381
+          name: 'Ollama: Available models - names'
+          type: DEPENDENT
+          key: ollama.models.available.names
+          value_type: TEXT
+          description: 'Comma-separated list of model names available locally (e.g. "llama3.2:latest, gemma3:270m").'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var names = data.models.map(function(item) {
+                      return item.name;
+                  });
+                  return names.join(', ');
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 12h
+          master_item:
+            key: 'ollama.models.available.get[{$OLLAMA.PORT}]'
+          tags:
+            - tag: component
+              value: model
+        - uuid: 5daf2ea70b2b44289dc746492ceaef68
+          name: 'Ollama: Loaded models count'
+          type: DEPENDENT
+          key: ollama.models.loaded.count
+          description: |
+            Number of models currently loaded into memory (VRAM).
+            A value of 0 means no model is loaded; -1 indicates a retrieval error.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.models.length()
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '-1'
+          master_item:
+            key: 'ollama.models.loaded.get[{$OLLAMA.PORT}]'
+          tags:
+            - tag: component
+              value: model
+        - uuid: 937389679c514098b5c0aff05d6507a3
+          name: 'Ollama: Get loaded models'
+          key: 'ollama.models.loaded.get[{$OLLAMA.PORT}]'
+          delay: 5m
+          history: '0'
+          value_type: TEXT
+          description: |
+            Master item. Calls GET /api/ps and stores the raw JSON response.
+            Lists models currently loaded into VRAM (GPU memory).
+            History is not kept (history=0); dependent items extract individual metrics.
+          timeout: 4s
+          tags:
+            - tag: component
+              value: model
+        - uuid: a8d8c7114637408eb8ee8b16e3c6d027
+          name: 'Ollama: Loaded models names'
+          type: DEPENDENT
+          key: ollama.models.loaded.names
+          value_type: TEXT
+          description: 'Comma-separated list of model names currently loaded in memory/VRAM.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var names = data.models.map(function(item) {
+                      return item.name;
+                  });
+                  return names.join(', ');
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 12h
+          master_item:
+            key: 'ollama.models.loaded.get[{$OLLAMA.PORT}]'
+          tags:
+            - tag: component
+              value: model
+        - uuid: 4ec4eccff25a407f81576fb9bcd8c1db
+          name: 'Ollama: Loaded models VRAM usage'
+          type: DEPENDENT
+          key: ollama.models.loaded.vram
+          units: B
+          description: 'Total VRAM consumed by all currently loaded models, in bytes.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var totalVram = 0;
+                  if (data.models && data.models.length > 0) {
+                      totalVram = data.models.reduce(function(sum, model) {
+                          return sum + (model.size_vram || 0);
+                      }, 0);
+                  }
+                  return totalVram;
+          master_item:
+            key: 'ollama.models.loaded.get[{$OLLAMA.PORT}]'
+          tags:
+            - tag: component
+              value: model
+        - uuid: a6304e44a9d14f898d94c1c55b171349
+          name: 'Ollama: Probe response error'
+          type: DEPENDENT
+          key: ollama.probe.error
+          value_type: CHAR
+          description: |
+            Extracts the "error" field from the probe JSON response.
+            Non-empty value indicates a problem:
+            - Ollama API error (e.g. model not found): returned by Ollama itself
+            - "curl_failed": network/timeout error caught by the wrapper script
+            - "empty_response": Ollama returned an empty body
+            - "invalid_json": response was not valid JSON
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.error
+              error_handler: CUSTOM_VALUE
+          master_item:
+            key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE}]'
+          tags:
+            - tag: component
+              value: probe
+          triggers:
+            - uuid: f70a161b1b1d48438594bb98ede216ae
+              expression: 'length(last(/Ollama by Zabbix agent/ollama.probe.error))>0'
+              name: 'Ollama: Probe request returned an error'
+              opdata: '{ITEM.VALUE}'
+              priority: AVERAGE
+              description: |
+                The inference probe returned an error. Possible causes:
+                - Model "{$OLLAMA.PROBE.MODEL}" is not available on this host
+                  (run: ollama pull {$OLLAMA.PROBE.MODEL})
+                - Ollama is running but cannot load the model (out of VRAM?)
+                - Network timeout: curl could not reach the API within the time limit
+                - Empty response: Ollama accepted the connection but returned nothing
+                
+                Current error value: {ITEM.VALUE}
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Ollama: Service is not responding on port {$OLLAMA.PORT}'
+                  expression: 'last(/Ollama by Zabbix agent/net.tcp.service[http,localhost,{$OLLAMA.PORT}])=0'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 0e8c5ffc722c48f18a5df2257041a3e5
+          name: 'Ollama: Get probe response'
+          key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE}]'
+          delay: 10m
+          history: '0'
+          value_type: TEXT
+          description: |
+            Master item. Sends a minimal inference request (prompt: "1+1") to the model
+            defined in {$OLLAMA.PROBE.MODEL} and stores the raw JSON response.
+            Used to verify that Ollama can actually perform inference, not just that
+            the TCP port is open. History is not kept (history=0).
+            
+            On network error or timeout, the wrapper script returns:
+              {"error":"curl_failed","curl_exit_code":<n>}
+            On empty response:
+              {"error":"empty_response"}
+          timeout: 4s
+          tags:
+            - tag: component
+              value: probe
+        - uuid: 49f810ce3a8044c78ccf9cf2c2d45e86
+          name: 'Ollama: Probe load_duration'
+          type: DEPENDENT
+          key: ollama.probe.load_duration
+          value_type: FLOAT
+          units: s
+          description: |
+            Time spent loading the model into memory during the probe request, in seconds.
+            A high value (>10s) usually means the model was not loaded (evicted from VRAM)
+            and had to be paged back from disk. Zero means the model was already in VRAM.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.load_duration
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            - type: MULTIPLIER
+              parameters:
+                - '1.0E-9'
+          master_item:
+            key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE}]'
+          tags:
+            - tag: component
+              value: probe
+        - uuid: c1aff5232c51480eadf7effd009e5c49
+          name: 'Ollama: Probe response - no response (timeout/empty)'
+          type: DEPENDENT
+          key: ollama.probe.no_response
+          description: |
+            Detects whether the probe got no usable response at all.
+            Returns 1 when the error field contains "curl_failed" or "empty_response",
+            meaning the wrapper script could not obtain any JSON from Ollama.
+            Returns 0 on a normal (possibly error-bearing) JSON response.
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                      var data = JSON.parse(value);
+                      if (data.error === 'curl_failed' || data.error === 'empty_response') {
+                          return 1;
+                      }
+                  } catch (e) {}
+                  return 0;
+          master_item:
+            key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE}]'
+          tags:
+            - tag: component
+              value: probe
+          triggers:
+            - uuid: 19b9e5cd9a074a2ebdb6a946ba5a46a6
+              expression: 'last(/Ollama by Zabbix agent/ollama.probe.no_response)=1'
+              name: 'Ollama: Probe got no response (timeout or empty body)'
+              opdata: 'error: {ITEM.LASTVALUE}'
+              priority: HIGH
+              description: |
+                The probe request either timed out (curl_failed with exit code 28)
+                or received an empty response body from Ollama.
+                This is distinct from an Ollama API error: it means the inference
+                engine did not respond at all within the configured timeout.
+                
+                Possible causes:
+                - Ollama is overloaded or stuck processing a previous request
+                - System is out of memory / VRAM and model loading hung
+                - curl connect timeout exceeded ({$OLLAMA.PORT} reachable but no reply)
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Ollama: Service is not responding on port {$OLLAMA.PORT}'
+                  expression: 'last(/Ollama by Zabbix agent/net.tcp.service[http,localhost,{$OLLAMA.PORT}])=0'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: c1733b0ae13f484099a058eee8341894
+          name: 'Ollama: Probe total_duration'
+          type: DEPENDENT
+          key: ollama.probe.total_duration
+          value_type: FLOAT
+          units: s
+          description: |
+            Total wall-clock time for the probe inference request, in seconds.
+            Includes model loading, prompt evaluation, and token generation.
+            Used to detect performance degradation. Threshold is {$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN}.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_duration
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            - type: MULTIPLIER
+              parameters:
+                - '1.0E-9'
+          master_item:
+            key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE}]'
+          tags:
+            - tag: component
+              value: probe
+          triggers:
+            - uuid: 1af0efc19feb4532a860b59058d4516e
+              expression: 'last(/Ollama by Zabbix agent/ollama.probe.total_duration)>{$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN}'
+              name: 'Ollama: Probe total_duration exceeds {$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN}'
+              opdata: '{ITEM.VALUE}'
+              priority: WARNING
+              description: |
+                The inference probe took longer than {$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN}.
+                This may indicate performance degradation due to:
+                - High system load (CPU, memory pressure)
+                - Model being evicted from VRAM and reloaded from disk
+                - GPU thermal throttling
+                Adjust the threshold via macro {$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN}
+                to suit the expected performance of the model on this hardware.
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Ollama: Service is not responding on port {$OLLAMA.PORT}'
+                  expression: 'last(/Ollama by Zabbix agent/net.tcp.service[http,localhost,{$OLLAMA.PORT}])=0'
+              tags:
+                - tag: scope
+                  value: performance
+        - uuid: e1c4c5aed6aa49d8ae7b4618a245f2cc
+          name: 'Ollama: Version'
+          key: 'ollama.version.get[{$OLLAMA.PORT}]'
+          delay: 30m
+          value_type: CHAR
+          description: |
+            Ollama server version string (e.g. "0.5.12").
+            Collected every 30 minutes; stored only on change (heartbeat 12h).
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.version
+              error_handler: DISCARD_VALUE
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 12h
+          tags:
+            - tag: component
+              value: general
+        - uuid: cf6c493e433c4ca2864cdb786819a473
+          name: 'Ollama: CPU utilization'
+          key: 'proc.cpu.util[ollama]'
+          delay: 2m
+          value_type: FLOAT
+          description: |
+            CPU utilization of all processes named "ollama", as a percentage.
+            Measured by the Zabbix agent using proc.cpu.util.
+            High sustained CPU usage (>80%) on a CPU-only host may indicate
+            that inference is slower than expected.
+          tags:
+            - tag: component
+              value: process
+        - uuid: 3fae506d09984f9e81a27d106f77d772
+          name: 'Ollama: Memory used'
+          key: 'proc.mem[ollama]'
+          delay: 2m
+          units: B
+          description: |
+            RSS memory consumed by all processes named "ollama", in bytes.
+            Does not include VRAM; use "Loaded models VRAM usage" for GPU memory.
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          tags:
+            - tag: component
+              value: process
+        - uuid: c2d4a36d14ac4ee2b021d8dbfcee7732
+          name: 'Ollama: Number of processes'
+          key: 'proc.num[ollama]'
+          delay: 2m
+          description: |
+            Number of running processes named "ollama".
+            Normally 1. A value of 0 triggers the port check trigger as well.
+            More than 1 may indicate a misconfiguration or a stuck process.
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          tags:
+            - tag: component
+              value: process
+          triggers:
+            - uuid: d0e4890844844254b34049efb7152e0c
+              expression: 'last(/Ollama by Zabbix agent/proc.num[ollama])=0'
+              name: 'Ollama: No ollama process found'
+              priority: HIGH
+              description: |
+                No process named "ollama" is running on this host.
+                The service has stopped or crashed.
+                Check: systemctl status ollama
+                This trigger and the TCP port trigger may fire together;
+                the port trigger dependency is not set here because proc.num
+                is an independent check that can fire even briefly before the
+                TCP port check detects the outage.
+              tags:
+                - tag: scope
+                  value: availability
+      tags:
+        - tag: class
+          value: software
+        - tag: target
+          value: ollama
+      macros:
+        - macro: '{$OLLAMA.PORT}'
+          value: '11434'
+          description: 'Ollama API port on localhost. Default: 11434.'
+        - macro: '{$OLLAMA.PROBE.KEEP_ALIVE}'
+          value: 30m
+          description: 'How long to keep the probe model loaded after the test inference. 0  = unload immediately after the probe (saves VRAM, but next probe will be slow) -1 = keep loaded permanently 30m = keep loaded for 30 minutes (default)'
+        - macro: '{$OLLAMA.PROBE.MODEL}'
+          value: 'gemma3:270m'
+          description: 'Model used for the inference probe (ollama.probe.get item). The model MUST be pulled on every monitored host before linking this template. Use a small, fast model (e.g. gemma3:270m, smollm2:135m).'
+        - macro: '{$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN}'
+          value: '1'
+          description: 'Warning threshold for probe total_duration, in seconds. Adjust to match the expected inference speed of {$OLLAMA.PROBE.MODEL} on this hardware. On GPU hosts 0.5s is achievable; on CPU-only hosts values of 5-30s are typical depending on the model size.'
+      dashboards:
+        - uuid: 8d30ce483dd24842a3ed3aa5d331f277
+          name: Ollama
+          display_period: '120'
+          pages:
+            - widgets:
+                - type: item
+                  name: 'Ollama alive'
+                  width: '12'
+                  height: '3'
+                  hide_header: 'YES'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: STRING
+                      name: description
+                      value: 'Port {$OLLAMA.PORT}/tcp'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'Ollama by Zabbix agent'
+                        key: 'net.tcp.service[http,localhost,{$OLLAMA.PORT}]'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: INTEGER
+                      name: show.1
+                      value: '2'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: E65660
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 3BC97D
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                - type: svggraph
+                  name: 'Probe response duration'
+                  'y': '3'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Ollama: Probe load_duration'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Ollama: Probe total_duration'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: UPJTS
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                    - type: INTEGER
+                      name: simple_triggers
+                      value: '1'
+                - type: svggraph
+                  name: 'Ollama memory usage'
+                  'y': '8'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Ollama: Memory used'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: DBFQG
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Ollama CPU usage'
+                  'y': '13'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Ollama: CPU utilization'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: FWMVT
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: item
+                  name: 'Available models'
+                  x: '12'
+                  width: '12'
+                  height: '3'
+                  hide_header: 'YES'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: STRING
+                      name: description
+                      value: 'Available models'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'Ollama by Zabbix agent'
+                        key: ollama.models.available.count
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: INTEGER
+                      name: show.1
+                      value: '2'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: E65660
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 3BC97D
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                - type: item
+                  name: 'Loaded models'
+                  x: '24'
+                  width: '12'
+                  height: '3'
+                  hide_header: 'YES'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: STRING
+                      name: description
+                      value: 'Loaded models'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'Ollama by Zabbix agent'
+                        key: ollama.models.loaded.count
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '120'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: INTEGER
+                      name: show.1
+                      value: '2'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: FCCB1D
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 3BC97D
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                - type: item
+                  x: '36'
+                  width: '12'
+                  height: '3'
+                  hide_header: 'YES'
+                  fields:
+                    - type: STRING
+                      name: description
+                      value: 'Ollama version'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'Ollama by Zabbix agent'
+                        key: 'ollama.version.get[{$OLLAMA.PORT}]'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: INTEGER
+                      name: show.1
+                      value: '2'
+                - type: svggraph
+                  name: 'Ollama models'
+                  x: '36'
+                  'y': '3'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Ollama: Available models count'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Ollama: Loaded models count'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: VMVFB
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Ollama models GPU VRAM usage'
+                  x: '36'
+                  'y': '8'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Ollama: Loaded models VRAM usage'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: SICXW
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: item
+                  x: '48'
+                  width: '12'
+                  height: '3'
+                  hide_header: 'YES'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: STRING
+                      name: description
+                      value: 'Ollama processes'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'Ollama by Zabbix agent'
+                        key: 'proc.num[ollama]'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: INTEGER
+                      name: show.1
+                      value: '2'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: E65660
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 3BC97D
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+      valuemaps:
+        - uuid: 5644316ed0234a13878d4dc568824186
+          name: 'Ollama alive'
+          mappings:
+            - value: '0'
+              newvalue: down
+            - value: '1'
+              newvalue: up
