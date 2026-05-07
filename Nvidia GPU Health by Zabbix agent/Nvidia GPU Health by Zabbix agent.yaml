@@ -1,0 +1,668 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 7aad7adac9f344f393050beecfb59b02
+      template: 'Nvidia GPU Health by Zabbix agent'
+      name: 'Nvidia GPU Health by Zabbix agent'
+      description: |
+        Monitors NVIDIA GPU compute applications (processes) and GPU health via nvidia-smi.
+        
+        == REQUIRED SETUP ON MONITORED HOST ==
+        
+        1) UserParameter definitions (/etc/zabbix/zabbix_agent2.d/nvidia.conf):
+        
+             UserParameter=nvidia.apps.json,/etc/zabbix/scripts/nvidia/nvidia_apps_json.py
+             UserParameter=nvidia.health.json,nvidia-smi --query-gpu=index,pstate,persistence_mode --format=csv,noheader 2>&1
+             UserParameter=nvidia.nvlink.json,nvidia-smi nvlink --errorcounters 2>&1
+        
+        2)  Add zabbix user to adm group:
+             usermod -aG adm zabbix
+        
+        == ITEMS OVERVIEW ==
+        nvidia.apps.*      – compute process monitoring (per GPU via LLD)\
+        nvidia.health.*    – GPU ERR state and persistence mode
+        nvidia.nvlink.*     – NVLink error counters
+        nvidia.xid.log      – Xid kernel error log monitoring
+        
+        == nvidia_apps_json.py ==
+        The script returns a JSON object with error status and per-GPU process count and oldest process age (in seconds).
+        
+        Expected JSON format:
+            {
+               "error": null,
+               "gpus": {
+                      "GPU-xxxx": {"proc_count": 2, "max_age": 19189},
+                      ...
+               }
+            }
+      vendor:
+        name: lpavlicek
+        version: 7.4-3
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 72f73d87f9e340d0b63f656f88acbb52
+          name: 'Nvidia: Xid kernel error'
+          type: ZABBIX_ACTIVE
+          key: 'log[/var/log/kern.log," NVRM: Xid ",,,skip]'
+          value_type: LOG
+          description: |
+            Monitors /var/log/kern.log for NVIDIA Xid errors logged by the kernel.
+            
+            Xid errors indicate GPU hardware or firmware faults. Critical codes:
+              Xid 119 – GSP firmware RPC timeout (GPU unresponsive, reset required)
+              Xid 154 – GPU recovery action changed (driver triggering GPU reset)
+              Xid  79 – GPU has fallen off the bus
+              Xid  63 – NVLink error
+            
+            
+            Uses "skip" to ignore existing entries on first check — only new Xid errors trigger alerts.
+          tags:
+            - tag: component
+              value: nvidia
+          triggers:
+            - uuid: 59a1249309904f4f8776a99c97624cf4
+              expression: 'find(/Nvidia GPU Health by Zabbix agent/log[/var/log/kern.log," NVRM: Xid ",,,skip],,"regexp","Xid.*(: | )(48|61|62|79|95|101|119|154)[^0-9]")=1'
+              name: 'Nvidia: critical Xid error – reboot likely required'
+              opdata: '{ITEM.VALUE}'
+              priority: DISASTER
+              description: |
+                A critical Xid error has been logged by the NVIDIA kernel driver.
+                The GPU is likely unresponsive or in an unrecoverable state. A server reboot
+                is almost certainly required.
+                
+                Xid codes in this group:
+                  Xid  48 – Double Bit ECC Error (DBE): uncorrectable memory error
+                  Xid  61 – Internal micro-controller halt: firmware crash
+                  Xid  62 – Internal micro-controller breakpoint/watchdog timeout
+                  Xid  79 – GPU has fallen off the bus: PCIe communication lost
+                  Xid  95 – Uncontained ECC error: cannot be isolated, GPU unstable
+                  Xid 101 – Uncontained channel error
+                  Xid 119 – GSP firmware RPC timeout: GPU unresponsive for 45s
+                  Xid 154 – GPU recovery action changed to "GPU Reset Required"
+                
+                === IMMEDIATE ACTIONS ===
+                
+                1) Check which GPUs are affected:
+                       nvidia-smi
+                
+                2) Check the full Xid context and identify the exact code:
+                       dmesg | grep "NVRM: Xid" | tail -30
+                
+                3) Identify the workload that triggered the failure:
+                       ps aux | grep -i cuda
+                
+                4) Wait for other GPUs to finish their workloads if possible,
+                   then reboot the server.
+                   SysFS reset (echo 1 > /sys/bus/pci/devices/.../reset) is unreliable
+                   on H200/H100 — prefer a full reboot.
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: nvidia
+            - uuid: 9d78af5d9bdf4aa8b56f5f8e197a4a68
+              expression: 'find(/Nvidia GPU Health by Zabbix agent/log[/var/log/kern.log," NVRM: Xid ",,,skip],,"regexp","Xid")=1'
+              name: 'Nvidia: Xid error detected'
+              opdata: '{ITEM.VALUE}'
+              priority: WARNING
+              description: |
+                An Xid error has been logged by the NVIDIA kernel driver.
+                This trigger fires for Xid codes not covered by higher-severity triggers.
+                Most of these indicate transient conditions, process-level faults, or
+                informational events that do not require immediate action.
+                
+                Common codes in this group:
+                  Xid  31 – GPU memory page fault (often caused by a buggy CUDA kernel)
+                  Xid  32 – Invalid or corrupted push buffer stream
+                  Xid  43 – GPU stopped processing: process-level fault, usually non-fatal
+                  Xid  45 – Inforom corruption: non-fatal, but reflash recommended
+                  Xid  64 – ECC scrubbing detected correctable errors: informational
+                
+                === ACTIONS ===
+                
+                1) Check the exact Xid code and message:
+                       dmesg | grep "NVRM: Xid" | tail -20
+                
+                2) If the same Xid code repeats frequently, escalate investigation —
+                   recurring errors often indicate a degrading GPU or a faulty workload.
+                
+                3) Check NVIDIA documentation for the specific Xid code:
+                       https://docs.nvidia.com/deploy/xid-errors/
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Nvidia: critical Xid error – reboot likely required'
+                  expression: 'find(/Nvidia GPU Health by Zabbix agent/log[/var/log/kern.log," NVRM: Xid ",,,skip],,"regexp","Xid.*(: | )(48|61|62|79|95|101|119|154)[^0-9]")=1'
+                - name: 'Nvidia: Xid error – investigation required'
+                  expression: 'find(/Nvidia GPU Health by Zabbix agent/log[/var/log/kern.log," NVRM: Xid ",,,skip],,"regexp","Xid.*(: | )(63|74|92|94|100)[^0-9]")=1'
+              tags:
+                - tag: component
+                  value: nvidia
+            - uuid: f6539c131ef8410285d5095dab83c50d
+              expression: 'find(/Nvidia GPU Health by Zabbix agent/log[/var/log/kern.log," NVRM: Xid ",,,skip],,"regexp","Xid.*(: | )(63|74|92|94|100)[^0-9]")=1'
+              name: 'Nvidia: Xid error – investigation required'
+              opdata: '{ITEM.VALUE}'
+              priority: HIGH
+              description: |
+                An Xid error has been logged by the NVIDIA kernel driver.
+                These errors may or may not require a reboot depending on severity and context.
+                Investigate promptly — they can precede a full GPU failure.
+                
+                Xid codes in this group:
+                  Xid  63 – NVLink error (older format): may precede Xid 119
+                  Xid  74 – NVLink error: NVLink communication failure between GPUs
+                  Xid  92 – High single-bit ECC error rate: elevated memory error rate
+                  Xid  94 – Contained ECC error (L2 cache): on Ampere+ may recover via
+                             GPU reset without reboot; on older architectures reboot required
+                  Xid 100 – Contained channel error: may recover, monitor closely
+                
+                === INVESTIGATION ===
+                
+                1) Check the exact Xid code and full context:
+                       dmesg | grep "NVRM: Xid" | tail -30
+                
+                2) Check GPU state and ECC error counts:
+                       nvidia-smi
+                       nvidia-smi -q | grep -A5 "ECC Errors"
+                
+                3) Check NVLink status if Xid 63 or 74:
+                       nvidia-smi nvlink --status
+                       nvidia-smi nvlink --errorcounters
+                
+                4) If errors persist or GPU enters ERR state, reboot is required.
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Nvidia: critical Xid error – reboot likely required'
+                  expression: 'find(/Nvidia GPU Health by Zabbix agent/log[/var/log/kern.log," NVRM: Xid ",,,skip],,"regexp","Xid.*(: | )(48|61|62|79|95|101|119|154)[^0-9]")=1'
+              tags:
+                - tag: component
+                  value: nvidia
+        - uuid: 972b9b78ad6e4eeabdb8544395a1c0e5
+          name: 'Nvidia: get apps error status'
+          type: DEPENDENT
+          key: nvidia.apps.error_status
+          value_type: TEXT
+          description: |
+            Reflects the availability of the nvidia-smi command on the host.
+            
+            Value is "null" when nvidia-smi runs successfully. Any other value contains the error message returned by the script (e.g. "NVML Driver/library version mismatch").
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.error
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 4h
+          master_item:
+            key: nvidia.apps.json
+          tags:
+            - tag: component
+              value: nvidia
+          triggers:
+            - uuid: 8cda46d2dffa4a22bd9c9a9c62882724
+              expression: 'last(/Nvidia GPU Health by Zabbix agent/nvidia.apps.error_status)<> "null"'
+              name: 'Nvidia get apps (nvidia-smi) error status'
+              opdata: '{ITEM.VALUE}'
+              priority: HIGH
+              description: |
+                nvidia-smi returned an error or could not be executed.
+                
+                Common cause: NVIDIA NVML Driver/library version mismatch after a kernel or driver update.
+                
+                === TROUBLESHOOTING ===
+                
+                1) Check the kernel driver version:
+                       cat /proc/driver/nvidia/version
+                
+                2) Update initramfs for the current kernel:
+                        update-initramfs -u
+                
+                3) Try reloading NVIDIA kernel modules (only when GPU is idle):
+                         lsmod | grep nvidia
+                         sudo rmmod nvidia_drm nvidia_modeset nvidia_uvm nvidia
+                         nvidia-smi
+                
+                4) If the GPU is in use, a reboot after step 2 is required.
+              tags:
+                - tag: component
+                  value: nvidia
+        - uuid: a6a90e908bf649fe8eb824adc349e3d0
+          name: 'Nvidia: get apps raw data'
+          key: nvidia.apps.json
+          delay: 5m
+          history: '0'
+          value_type: TEXT
+          description: 'Master item. Executes the nvidia_apps_json.py script on the monitored host via Zabbix agent UserParameter and stores the raw JSON output. All other items and LLD rules depend on this item.'
+          tags:
+            - tag: component
+              value: nvidia
+            - tag: stage
+              value: raw
+        - uuid: 1d2711314bb04eedac117424575daaf2
+          name: 'Nvidia: GPU ERR state count'
+          type: DEPENDENT
+          key: nvidia.health.err_count
+          description: |
+            Number of GPUs currently in ERR state as reported by nvidia-smi.
+            
+            ERR! appears in the pstate (performance state) column when the NVIDIA driver has lost communication with a GPU — typically caused by:
+            - NVLink P2P failure with GSP firmware timeout (Xid 119)
+            - PCIe communication failure
+            - GPU reset required (Xid 154)
+            
+            Value > 0 requires immediate attention. Recovery usually requires server reboot.
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var lines = value.trim().split('\n');
+                  var count = 0;
+                  for (var i = 0; i < lines.length; i++) {
+                      if (lines[i].indexOf('ERR') !== -1) {
+                          count++;
+                      }
+                  }
+                  return count;
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 4h
+          master_item:
+            key: nvidia.health.json
+          tags:
+            - tag: component
+              value: nvidia
+          triggers:
+            - uuid: 4d246a9a22614007a6c6028b61c41d33
+              expression: 'last(/Nvidia GPU Health by Zabbix agent/nvidia.health.err_count)>0'
+              name: 'Nvidia: {ITEM.VALUE} GPU(s) in ERR state'
+              opdata: '{ITEM.VALUE} GPU(s) affected'
+              priority: HIGH
+              description: |
+                One or more NVIDIA GPUs are in ERR state. The driver has lost communication with these GPUs.
+                
+                This typically means:
+                - A multi-GPU (NVLink/P2P) workload triggered a GSP firmware timeout (Xid 119)
+                - The driver requested a GPU reset (Xid 154) which was not completed
+                
+                === IMMEDIATE ACTIONS ===
+                1) Check which GPUs are affected:
+                       nvidia-smi
+                
+                2) Check for Xid errors:
+                       dmesg | grep "NVRM: Xid" | tail -20
+                
+                3) Check active workloads on remaining GPUs before rebooting.
+                
+                4) Reboot is required to recover the affected GPUs.
+              tags:
+                - tag: component
+                  value: nvidia
+        - uuid: d781c5fc6cab435ea3605f49c5cdc928
+          name: 'Nvidia: get health raw data'
+          key: nvidia.health.json
+          delay: 2m
+          history: '0'
+          value_type: TEXT
+          description: |
+            Master item. Executes: nvidia-smi --query-gpu=index,pstate,persistence_mode --format=csv,noheader
+            
+            Returns one line per GPU, e.g.:
+               0, ERR!, N/A
+               1, P0, Enabled
+            
+            Value "ERR!" in pstate column indicates the driver has lost communication with the GPU.
+            All dependent health items use this as their data source.
+          tags:
+            - tag: component
+              value: nvidia
+            - tag: stage
+              value: raw
+        - uuid: 290d2e7d281749b2827b05122a4eb264
+          name: 'Nvidia: persistence mode disabled count'
+          type: DEPENDENT
+          key: nvidia.health.persistence_disabled
+          description: |
+            Number of GPUs that have persistence mode disabled.
+            
+            Persistence mode keeps the NVIDIA driver loaded between workloads. Without it, the driver fully initializes on each CUDA call and shuts down when the process exits.
+            
+            On multi-GPU servers this increases the risk of NVLink initialization failures and GSP timeouts when a new workload starts cold. 
+            
+            Note: persistence mode is managed by nvidia-persistenced daemon. Ensure it is running without --no-persistence-mode flag.
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var lines = value.trim().split('\n');
+                  var count = 0;
+                  for (var i = 0; i < lines.length; i++) {
+                      var line = lines[i].toLowerCase();
+                      if (line.indexOf('err') !== -1) continue;
+                      if (line.indexOf('disabled') !== -1) {
+                          count++;
+                      }
+                  }
+                  return count;
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 4h
+          master_item:
+            key: nvidia.health.json
+          tags:
+            - tag: component
+              value: nvidia
+          triggers:
+            - uuid: 7e50f11fa7c645b39d2d0524ea494bfc
+              expression: 'last(/Nvidia GPU Health by Zabbix agent/nvidia.health.persistence_disabled) > 0'
+              name: 'Nvidia: persistence mode disabled on {ITEM.VALUE} GPU(s)'
+              opdata: '{ITEM.VALUE} GPU(s) affected'
+              priority: INFO
+              description: |
+                One or more NVIDIA GPUs have persistence mode disabled.
+                
+                On servers running multi-GPU workloads (NVLink/P2P), disabled persistence mode increases the risk of GSP firmware timeouts during cold GPU initialization.
+                
+                === FIX ===
+                
+                Check nvidia-persistenced status:
+                    systemctl status nvidia-persistenced
+                
+                If running with --no-persistence-mode, create a systemd override:
+                    systemctl edit nvidia-persistenced
+                Add:
+                
+                [Service]
+                ExecStart=
+                ExecStart=/usr/bin/nvidia-persistenced --user nvidia-persistenced --verbose
+                
+                Then: systemctl daemon-reload && systemctl restart nvidia-persistenced
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: nvidia
+        - uuid: d44f2fb2c6c2469fb111f6899480f6e0
+          name: 'Nvidia: NVLink total error count'
+          type: DEPENDENT
+          key: nvidia.nvlink.errors
+          description: |
+            Total sum of all NVLink error counters across all GPUs and all links.
+            Includes: Replay errors, Recovery errors, CRC FLIT errors, CRC Data errors.
+            Non-zero value indicates NVLink communication failures between GPUs.
+            
+            Note: counters are cumulative since driver load. Use change() in triggers to detect new errors rather than absolute values.
+            
+            On systems without NVLink, disable this item via the {$NVLINK_PRESENT} macro.
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var lines = value.split('\n');
+                  var total = 0;
+                  for (var i = 0; i < lines.length; i++) {
+                      var match = lines[i].match(/:\s*(\d+)\s*$/);
+                      if (match) {
+                          total += parseInt(match[1], 10);
+                      }
+                  }
+                  return total;
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 4h
+          master_item:
+            key: nvidia.nvlink.json
+          tags:
+            - tag: component
+              value: nvidia
+          triggers:
+            - uuid: 326f6e6922594fe79b6adba60dac027c
+              expression: 'change(/Nvidia GPU Health by Zabbix agent/nvidia.nvlink.errors)>0 and {$NVLINK_PRESENT}=1'
+              name: 'Nvidia: NVLink error counters are increasing'
+              opdata: 'Total errors: {ITEM.VALUE}'
+              priority: AVERAGE
+              description: |
+                NVLink error counters have increased since the last check.\n\nThis indicates active NVLink communication failures between GPUs and may precede a full GPU ERR state (GSP timeout / Xid 119).
+                
+                === INVESTIGATION ===
+                Check per-link counters:
+                    nvidia-smi nvlink --errorcounters
+                
+                Check NVLink link status:
+                    nvidia-smi nvlink --status
+                
+                Check kernel log for NVLink errors:
+                    dmesg | grep -i "nvlink" | tail -30
+                
+                Check for Xid errors:
+                    dmesg | grep "NVRM: Xid"
+              tags:
+                - tag: component
+                  value: nvidia
+        - uuid: 255e1ba0325d482ca1cabe73e653ff30
+          name: 'Nvidia: get NVLink error counters raw data'
+          key: nvidia.nvlink.json
+          delay: 5m
+          history: '0'
+          value_type: TEXT
+          description: |
+            Master item. Executes: nvidia-smi nvlink --errorcounters
+            
+            Collects NVLink error counters for all GPUs and links. Non-zero counters indicate NVLink communication problems between GPUs.
+            
+            On systems without NVLink (single GPU or PCIe-only topology), this item will return an error or empty output — suppress the dependent trigger using the {$NVLINK_PRESENT} macro.
+          tags:
+            - tag: component
+              value: nvidia
+            - tag: stage
+              value: raw
+      discovery_rules:
+        - uuid: 36fd9f77d6ae441fb1a4fa02d5649bd2
+          name: 'Nvidia: GPU discovery'
+          type: DEPENDENT
+          key: nvidia.apps.gpu.discovery
+          description: |
+            Discovers NVIDIA GPUs that currently have at least one compute process attached. One set of item prototypes is created per GPU.
+            
+            Note: a GPU disappears from discovery when all its processes end. Existing items are kept according to the "Keep lost resources" setting.
+          item_prototypes:
+            - uuid: 14844a492fae4856902307340f3fe84f
+              name: '[{#GPU_UUID}]: Compute apps status'
+              type: DEPENDENT
+              key: 'nvidia.apps.gpu_status[{#GPU_UUID}]'
+              description: |
+                Aggregated status of the GPU compute workload.
+                
+                0 – Idle: no compute processes attached
+                2 – Warning (info): oldest process exceeds {$GPU_PROC_MAX_AGE_LIMIT_INFO}
+                3 – Warning: oldest process exceeds {$GPU_PROC_MAX_AGE_LIMIT_WARN}
+                4 – Error: nvidia-smi failed or returned invalid data
+              valuemap:
+                name: 'Nvidia GPU compute status'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var gpu_uuid   = "{#GPU_UUID}";
+                      var limit_info = "{$GPU_PROC_MAX_AGE_LIMIT_INFO}";
+                      var limit_warn = "{$GPU_PROC_MAX_AGE_LIMIT_WARN}";
+                      
+                      // --- Pomocná funkce: převod časového řetězce na sekundy ---
+                      function parseTimeToSeconds(t) {
+                          t = String(t).trim();
+                          var match = t.match(/^(\d+(?:\.\d+)?)\s*([smhd]?)$/i);
+                          if (!match) return NaN;
+                          var val  = parseFloat(match[1]);
+                          var unit = match[2].toLowerCase();
+                          switch (unit) {
+                              case 's': case '': return val;
+                              case 'm': return val * 60;
+                              case 'h': return val * 3600;
+                              case 'd': return val * 86400;
+                              default:  return NaN;
+                          }
+                      }
+                      
+                      // --- Parse JSON ---
+                      var data;
+                      try {
+                          data = JSON.parse(value);
+                      } catch (e) {
+                          return 4; // Chyba parsování = stav 4
+                      }
+                      
+                      // --- Stav 4: chyba nahlášená skriptem ---
+                      if (data.error !== null && data.error !== undefined) {
+                          return 4;
+                      }
+                      
+                      // --- Najdi GPU ---
+                      var gpu = data.gpus ? data.gpus[gpu_uuid] : undefined;
+                      if (gpu === undefined) {
+                          // GPU není v JSONu – buď žádné procesy, nebo UUID nesedí
+                          // Vracíme 0 (žádná aplikace), ne chybu
+                          return 0;
+                      }
+                      
+                      // --- Stav 0: žádné procesy ---
+                      if (!gpu.proc_count || gpu.proc_count === 0) {
+                          return 0;
+                      }
+                      
+                      // --- Stav 1–3 podle stáří nejstaršího procesu ---
+                      var max_age   = gpu.max_age;                  // sekundy
+                      var sec_warn  = parseTimeToSeconds(limit_warn);
+                      var sec_info  = parseTimeToSeconds(limit_info);
+                      
+                      if (!isNaN(sec_warn) && max_age > sec_warn) {
+                          return 3;
+                      }
+                      if (!isNaN(sec_info) && max_age > sec_info) {
+                          return 2;
+                      }
+                      return 1;
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: nvidia.apps.json
+              tags:
+                - tag: component
+                  value: nvidia
+                - tag: device
+                  value: '{#GPU_UUID}'
+            - uuid: 64f22f8146c94430aed005481a2d78d4
+              name: '[{#GPU_UUID}]: Oldest compute app age'
+              type: DEPENDENT
+              key: 'nvidia.apps.max_age[{#GPU_UUID}]'
+              units: s
+              description: |
+                Age (in seconds) of the longest-running compute process currently using this GPU.
+                
+                The script determines process age from /proc/<pid>/stat (process start time relative to system boot).
+                
+                Note: the age resets to zero when all processes detach and a new process attaches. It measures continuous GPU occupancy per process, not per GPU session.
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.gpus["{#GPU_UUID}"].max_age'
+              master_item:
+                key: nvidia.apps.json
+              tags:
+                - tag: component
+                  value: nvidia
+                - tag: device
+                  value: '{#GPU_UUID}'
+              trigger_prototypes:
+                - uuid: 843354ce2560431ea213c0ce5dcc0ee3
+                  expression: 'last(/Nvidia GPU Health by Zabbix agent/nvidia.apps.max_age[{#GPU_UUID}]) > {$GPU_PROC_MAX_AGE_LIMIT_INFO}'
+                  name: '[{#GPU_UUID}]: Max process age > {$GPU_PROC_MAX_AGE_LIMIT_INFO}'
+                  opdata: '{ITEM.VALUE}'
+                  priority: INFO
+                  description: |
+                    A compute process has been using this GPU continuously for longer than {$GPU_PROC_MAX_AGE_LIMIT_INFO}.
+                    
+                    This may indicate a forgotten or stuck job. Review running.
+                  manual_close: 'YES'
+                  dependencies:
+                    - name: 'Nvidia get apps (nvidia-smi) error status'
+                      expression: 'last(/Nvidia GPU Health by Zabbix agent/nvidia.apps.error_status)<> "null"'
+                    - name: '[{#GPU_UUID}]: Max process age > {$GPU_PROC_MAX_AGE_LIMIT_WARN}'
+                      expression: 'last(/Nvidia GPU Health by Zabbix agent/nvidia.apps.max_age[{#GPU_UUID}]) > {$GPU_PROC_MAX_AGE_LIMIT_WARN}'
+                  tags:
+                    - tag: component
+                      value: nvidia
+                - uuid: d2fcaf691d3b4ada90893e3e8349c472
+                  expression: 'last(/Nvidia GPU Health by Zabbix agent/nvidia.apps.max_age[{#GPU_UUID}]) > {$GPU_PROC_MAX_AGE_LIMIT_WARN}'
+                  name: '[{#GPU_UUID}]: Max process age > {$GPU_PROC_MAX_AGE_LIMIT_WARN}'
+                  opdata: '{ITEM.VALUE}'
+                  priority: WARNING
+                  description: |
+                    A compute process has been using this GPU continuously for longer than {$GPU_PROC_MAX_AGE_LIMIT_WARN}.
+                    
+                    This likely indicates a long-running or stuck job.
+                  manual_close: 'YES'
+                  dependencies:
+                    - name: 'Nvidia get apps (nvidia-smi) error status'
+                      expression: 'last(/Nvidia GPU Health by Zabbix agent/nvidia.apps.error_status)<> "null"'
+                  tags:
+                    - tag: component
+                      value: nvidia
+            - uuid: 09bcb17b8b0b486387f6d3019ecff33f
+              name: '[{#GPU_UUID}]: Number of compute apps'
+              type: DEPENDENT
+              key: 'nvidia.apps.proc_count[{#GPU_UUID}]'
+              description: 'Number of compute processes (applications) currently using this GPU. Sourced from "nvidia-smi --query-compute-apps".'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.gpus["{#GPU_UUID}"].proc_count'
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 30m
+              master_item:
+                key: nvidia.apps.json
+              tags:
+                - tag: component
+                  value: nvidia
+                - tag: device
+                  value: '{#GPU_UUID}'
+          master_item:
+            key: nvidia.apps.json
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var input = JSON.parse(value);
+                  var output = [];
+                  for (var uuid in input.gpus) {
+                      output.push({ "{#GPU_UUID}": uuid });
+                  }
+                  return JSON.stringify(output);
+      tags:
+        - tag: component
+          value: nvidia
+      macros:
+        - macro: '{$GPU_PROC_MAX_AGE_LIMIT_INFO}'
+          value: 3d
+          description: 'Trigger at INFO level when a compute process has been running for this long.'
+        - macro: '{$GPU_PROC_MAX_AGE_LIMIT_WARN}'
+          value: 7d
+          description: 'Trigger at WARNING level when a compute process has been running for this long.'
+        - macro: '{$NVLINK_PRESENT}'
+          value: '0'
+          description: 'Set to 1 if this host has NVLink connections between GPUs (multi-GPU servers). Set to 0 on single-GPU hosts or hosts where GPUs are connected via PCIe only. Controls whether NVLink error counter trigger fires.'
+      valuemaps:
+        - uuid: c868b183c2304444a94819f9fcbf01af
+          name: 'Nvidia GPU compute status'
+          mappings:
+            - value: '0'
+              newvalue: Idle
+            - value: '1'
+              newvalue: Active
+            - value: '2'
+              newvalue: 'Long-running process (info)'
+            - value: '3'
+              newvalue: 'Long-running process (warning)'
+            - value: '4'
+              newvalue: Error
