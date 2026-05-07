@@ -26,7 +26,7 @@ zabbix_export:
             }
       vendor:
         name: lpavlicek
-        version: 7.4-1
+        version: 7.4-2
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -83,7 +83,7 @@ zabbix_export:
           name: 'Nvidia: get apps raw data'
           key: nvidia.apps.json
           delay: 5m
-          history: 1h
+          history: '0'
           value_type: TEXT
           description: 'Master item. Executes the nvidia_apps_json.py script on the monitored host via Zabbix agent UserParameter and stores the raw JSON output. All other items and LLD rules depend on this item.'
           tags:
@@ -254,7 +254,7 @@ zabbix_export:
                     - '$.gpus["{#GPU_UUID}"].proc_count'
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
-                    - 1h
+                    - 30m
               master_item:
                 key: nvidia.apps.json
               tags:
