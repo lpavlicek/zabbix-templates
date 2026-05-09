@@ -40,7 +40,7 @@ zabbix_export:
             }
       vendor:
         name: lpavlicek
-        version: 7.4-3
+        version: 7.4-4
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -48,6 +48,7 @@ zabbix_export:
           name: 'Nvidia: Xid kernel error'
           type: ZABBIX_ACTIVE
           key: 'log[/var/log/kern.log," NVRM: Xid ",,,skip]'
+          delay: 1s
           value_type: LOG
           description: |
             Monitors /var/log/kern.log for NVIDIA Xid errors logged by the kernel.
@@ -60,6 +61,7 @@ zabbix_export:
             
             
             Uses "skip" to ignore existing entries on first check — only new Xid errors trigger alerts.
+          logtimefmt: 'yyyy-MM-ddThh:mm:ss'
           tags:
             - tag: component
               value: nvidia
@@ -436,6 +438,94 @@ zabbix_export:
                 
                 Check for Xid errors:
                     dmesg | grep "NVRM: Xid"
+              tags:
+                - tag: component
+                  value: nvidia
+        - uuid: fa183dc280684b358e8e692c872e59cf
+          name: 'Nvidia: NVLink inactive GPU count'
+          type: DEPENDENT
+          key: nvidia.nvlink.inactive_count
+          description: |
+            Number of GPUs for which NVLink error counters cannot be retrieved because
+            all links are inactive (NVML reports: "all links are inActive").
+            
+            This condition is reported by nvidia-smi as:
+                NVML: Unable to retrieve NVLink errors as all links are inActive
+            
+            An inactive NVLink state means the GPU has lost communication with its
+            NVLink peers. This typically follows or accompanies a GSP firmware timeout
+            (Xid 119) and indicates the GPU is in a failed or unrecoverable state.
+            
+            Unlike standard NVLink error counters (which remain zero even during GPU
+            failure), this item detects the failure condition itself.
+            
+            A non-zero value requires immediate attention. Recovery usually requires
+            a server reboot.
+            
+            Note: Only meaningful when {$NVLINK_PRESENT}=1.
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var lines = value.split('\n');
+                  var count = 0;
+                  for (var i = 0; i < lines.length; i++) {
+                      if (lines[i].indexOf('inActive') !== -1 ||
+                          lines[i].indexOf('Unable to retrieve') !== -1) {
+                          count++;
+                      }
+                  }
+                  return count;
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 4h
+          master_item:
+            key: nvidia.nvlink.json
+          tags:
+            - tag: component
+              value: nvidia
+          triggers:
+            - uuid: dbe5cff73131468d9153a2e9a4a6cbd1
+              expression: |
+                last(/Nvidia GPU Health by Zabbix agent/nvidia.nvlink.inactive_count) > 0
+                and 
+                {$NVLINK_PRESENT}=1
+              name: 'Nvidia: {ITEM.VALUE} GPU(s) with NVLink links inactive'
+              opdata: '{ITEM.VALUE} GPU(s) affected'
+              priority: HIGH
+              description: |
+                One or more GPUs report that all NVLink links are inactive and error counters
+                cannot be retrieved. nvidia-smi output contains:
+                    NVML: Unable to retrieve NVLink errors as all links are inActive
+                
+                This condition indicates the GPU has lost NVLink connectivity with its peers.
+                It typically occurs together with or immediately after a GSP firmware timeout
+                (Xid 119 / Xid 154) and means the affected GPU is in a failed state.
+                
+                Note: standard NVLink error counters remain zero in this state and will NOT
+                trigger the "NVLink error counters are increasing" alert. This trigger is the
+                only detection path for this failure mode.
+                
+                === IMMEDIATE ACTIONS ===
+                
+                1) Identify affected GPU(s):
+                       nvidia-smi
+                       nvidia-smi nvlink --status
+                
+                2) Check for Xid errors in kernel log:
+                       dmesg | grep "NVRM: Xid" | tail -20
+                       grep "NVRM: Xid" /var/log/kern.log | tail -20
+                
+                3) Check NVLink counters on remaining GPUs:
+                       nvidia-smi nvlink --errorcounters
+                
+                4) Check GPU ERR state:
+                       nvidia-smi --query-gpu=index,pstate --format=csv,noheader
+                
+                5) A server reboot is required to recover the affected GPU.
+                   GPU reset without reboot (nvidia-smi --gpu-reset) is unlikely to succeed
+                   in this state and may cause Xid 79 (GPU fallen off the bus) on all GPUs.
+              manual_close: 'YES'
               tags:
                 - tag: component
                   value: nvidia
