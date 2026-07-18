@@ -1,0 +1,2019 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 8482babc5eb0498db1bec96bdff7db4a
+      template: 'FreeRADIUS Statistics by Zabbix agent'
+      name: 'FreeRADIUS Statistics by Zabbix agent'
+      description: 'Monitors FreeRADIUS 3.2 server statistics via the built-in status server (radclient status queries), both globally and per RADIUS client (NAS). Requires freeradius_stats.sh installed on the host, registered as Zabbix agent UserParameters, and the status virtual server enabled in FreeRADIUS with a client allowing queries from the Zabbix agent host. Note: RadSec/TLS clients appear in "radmin show client list" but FreeRADIUS does not provide per-client statistics for them (status server replies with FreeRADIUS-Stats-Error = "No such client") - do not add RadSec clients to {$RADIUS.CLIENTS}.'
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 4dc5c21585304f32b1eb0789176a8070
+          name: 'FreeRADIUS Acct-Dropped-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.acct.dropped
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Acct-Dropped-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Accounting.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Acct-Dropped-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: accounting
+            - tag: component
+              value: statistics
+          triggers:
+            - uuid: 37503c49f0f44fe096cfa776eacfd808
+              expression: 'avg(/FreeRADIUS Statistics by Zabbix agent/radiusstats.global.acct.dropped,10m)>{$RADIUS.ACCT.DROPPED.WARN}'
+              name: 'FreeRADIUS high receiving dropped accounting requests rate on {HOST.NAME}'
+              priority: WARNING
+              description: 'Average receiving dropped accounting requests rate over the last 10 minutes exceeded {$RADIUS.ACCT.DROPPED.WARN} dropped/s. Accounting data is being lost - check server load and the SQL/logging backend used by the acct virtual server.'
+              tags:
+                - tag: category
+                  value: accounting
+                - tag: component
+                  value: statistics
+        - uuid: 3238da31a6f74da88133799405f2bb62
+          name: 'FreeRADIUS Acct-Duplicate-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.acct.duplicate
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Acct-Duplicate-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Accounting.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Acct-Duplicate-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: accounting
+            - tag: component
+              value: statistics
+        - uuid: 96c9a5f0574542bc9653181b3ad4ebe4
+          name: 'FreeRADIUS Acct-Invalid-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.acct.invalid
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Acct-Invalid-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Accounting.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Acct-Invalid-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: accounting
+            - tag: component
+              value: statistics
+          triggers:
+            - uuid: 64823d50e5214ebfb22914c17b9f852f
+              expression: 'avg(/FreeRADIUS Statistics by Zabbix agent/radiusstats.global.acct.invalid,10m)>{$RADIUS.ACCT.INVALID.WARN}'
+              name: 'FreeRADIUS high receiving invalid accounting requests rate on {HOST.NAME}'
+              priority: WARNING
+              description: 'Average receiving invalid accounting requests rate over the last 10 minutes exceeded {$RADIUS.ACCT.INVALID.WARN} invalid/s. Check the accounting virtual server and the attributes sent by NAS clients in Accounting-Request packets.'
+              tags:
+                - tag: category
+                  value: accounting
+                - tag: component
+                  value: statistics
+        - uuid: fc17a8544bf046d997d8042d4026c682
+          name: 'FreeRADIUS Acct-Malformed-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.acct.malformed
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Acct-Malformed-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Accounting.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Acct-Malformed-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: accounting
+            - tag: component
+              value: statistics
+        - uuid: 804662e3e08440f39bfb64395b1597bc
+          name: 'FreeRADIUS Accounting-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.acct.requests
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Accounting-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Accounting.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Accounting-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: accounting
+            - tag: component
+              value: statistics
+        - uuid: 557088cacd21410995bbc7ef62311fb7
+          name: 'FreeRADIUS Accounting-Responses rate'
+          type: DEPENDENT
+          key: radiusstats.global.acct.responses
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Accounting-Responses per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Accounting.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Accounting-Responses = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: accounting
+            - tag: component
+              value: statistics
+        - uuid: 07697b06b46749f79d3e0c3dd884101b
+          name: 'FreeRADIUS Acct-Unknown-Types rate'
+          type: DEPENDENT
+          key: radiusstats.global.acct.unknown_types
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Acct-Unknown-Types per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Accounting.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Acct-Unknown-Types = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: accounting
+            - tag: component
+              value: statistics
+        - uuid: 2512b665c6664acc96b7e31c70b5c7a0
+          name: 'FreeRADIUS Access-Accepts rate'
+          type: DEPENDENT
+          key: radiusstats.global.auth.access_accepts
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Access-Accepts per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Access-Accepts = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: auth
+            - tag: component
+              value: statistics
+        - uuid: 0c829d9490044e9786b07c042d58f8b1
+          name: 'FreeRADIUS Access-Challenges rate'
+          type: DEPENDENT
+          key: radiusstats.global.auth.access_challenges
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Access-Challenges per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Access-Challenges = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: auth
+            - tag: component
+              value: statistics
+        - uuid: 2a003734887448c89a6d158da3e363d5
+          name: 'FreeRADIUS Access-Rejects rate'
+          type: DEPENDENT
+          key: radiusstats.global.auth.access_rejects
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Access-Rejects per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Access-Rejects = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: auth
+            - tag: component
+              value: statistics
+          triggers:
+            - uuid: 056e60d2b7054f0080cca8e4ab5e065a
+              expression: 'avg(/FreeRADIUS Statistics by Zabbix agent/radiusstats.global.auth.access_rejects,10m)>{$RADIUS.REJECT.RATE.WARN}'
+              name: 'FreeRADIUS high Access-Reject rate on {HOST.NAME}'
+              priority: WARNING
+              description: 'Average Access-Reject rate over the last 10 minutes exceeded {$RADIUS.REJECT.RATE.WARN} rejects/s. May indicate misconfigured clients, expired credentials, or an authentication attack.'
+              tags:
+                - tag: category
+                  value: auth
+                - tag: component
+                  value: statistics
+        - uuid: 4ce0361d082e41eca56498b70ef67f81
+          name: 'FreeRADIUS Access-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.auth.access_requests
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Access-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Access-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: auth
+            - tag: component
+              value: statistics
+        - uuid: 926d852312e14af99ad86fd327d4c1c0
+          name: 'FreeRADIUS Auth-Conflicts rate'
+          type: DEPENDENT
+          key: radiusstats.global.auth.conflicts
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Auth-Conflicts per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Auth-Conflicts = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: auth
+            - tag: component
+              value: statistics
+        - uuid: c260c77e482d4a6da746076d99fa2049
+          name: 'FreeRADIUS Auth-Dropped-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.auth.dropped
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Auth-Dropped-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Auth-Dropped-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: auth
+            - tag: component
+              value: statistics
+          triggers:
+            - uuid: 36bec11207d7476fab31a604b4ef55c6
+              expression: 'avg(/FreeRADIUS Statistics by Zabbix agent/radiusstats.global.auth.dropped,10m)>{$RADIUS.AUTH.DROPPED.WARN}'
+              name: 'FreeRADIUS high receiving dropped authentication requests rate on {HOST.NAME}'
+              priority: WARNING
+              description: 'Average receiving dropped authentication requests rate over the last 10 minutes exceeded {$RADIUS.AUTH.DROPPED.WARN} dropped/s. Dropped requests usually mean the server is overloaded (worker threads exhausted) and could not process the request at all.'
+              tags:
+                - tag: category
+                  value: auth
+                - tag: component
+                  value: statistics
+        - uuid: 699c74e8f96344a39e0a46d6919e2515
+          name: 'FreeRADIUS Auth-Duplicate-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.auth.duplicate
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Auth-Duplicate-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Auth-Duplicate-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: auth
+            - tag: component
+              value: statistics
+        - uuid: c1ad027f04b24cb5aa5950c5fd79c3c9
+          name: 'FreeRADIUS Auth-Invalid-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.auth.invalid
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Auth-Invalid-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Auth-Invalid-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: auth
+            - tag: component
+              value: statistics
+          triggers:
+            - uuid: e68ca966008c43af8fe0ca20c2bc6504
+              expression: 'avg(/FreeRADIUS Statistics by Zabbix agent/radiusstats.global.auth.invalid,10m)>{$RADIUS.AUTH.INVALID.WARN}'
+              name: 'FreeRADIUS high receiving invalid authentication requests rate on {HOST.NAME}'
+              priority: WARNING
+              description: 'Average receiving invalid authentication requests rate over the last 10 minutes exceeded {$RADIUS.AUTH.INVALID.WARN} invalid/s  - e.g. failed Message-Authenticator check. Check for misconfigured or misbehaving NAS clients.'
+              tags:
+                - tag: category
+                  value: auth
+                - tag: component
+                  value: statistics
+        - uuid: b63802b18d584d779162ce570d9dd36c
+          name: 'FreeRADIUS Auth-Malformed-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.auth.malformed
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Auth-Malformed-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Auth-Malformed-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: auth
+            - tag: component
+              value: statistics
+          triggers:
+            - uuid: 7ed32856f6ea49e99b54bb6fa92fdc6c
+              expression: 'avg(/FreeRADIUS Statistics by Zabbix agent/radiusstats.global.auth.malformed,10m)>{$RADIUS.AUTH.MALFORMED.WARN}'
+              name: 'FreeRADIUS high receiving malformed authentication requests rate on {HOST.NAME}'
+              priority: WARNING
+              description: |
+                FreeRADIUS is receiving structurally malformed authentication packets (non-zero rate).
+                Average receiving malformed authentication requests rate over the last 10 minutes exceeded {$RADIUS.AUTH.MALFORMED.WARN} malformed/s
+              tags:
+                - tag: category
+                  value: auth
+                - tag: component
+                  value: statistics
+        - uuid: e4ce1ee4efe8468cbe04b69059728804
+          name: 'FreeRADIUS Auth-Responses rate'
+          type: DEPENDENT
+          key: radiusstats.global.auth.responses
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Auth-Responses per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Auth-Responses = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: auth
+            - tag: component
+              value: statistics
+        - uuid: f413e95b73ce457a9fbb5f593b4a6975
+          name: 'FreeRADIUS Auth-Unknown-Types rate'
+          type: DEPENDENT
+          key: radiusstats.global.auth.unknown_types
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Auth-Unknown-Types per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Auth-Unknown-Types = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: auth
+            - tag: component
+              value: statistics
+        - uuid: 8529552816c04c27b10a248efd490726
+          name: 'FreeRADIUS HUP-Time'
+          type: DEPENDENT
+          key: radiusstats.global.info.hup_time
+          value_type: TEXT
+          description: 'Timestamp of the last configuration reload (HUP), or start time if never reloaded.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Stats-HUP-Time = "([^"]+)"'
+                - \1
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 24h
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: info
+            - tag: component
+              value: statistics
+        - uuid: f651e708c7ad44c9bff29d9c1d93f84b
+          name: 'FreeRADIUS Start-Time'
+          type: DEPENDENT
+          key: radiusstats.global.info.start_time
+          value_type: TEXT
+          description: 'Timestamp when the FreeRADIUS process was last started.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Stats-Start-Time = "([^"]+)"'
+                - \1
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 24h
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: info
+            - tag: component
+              value: statistics
+        - uuid: f969a266ab5c45f4975f1b6c1dca32e4
+          name: 'FreeRADIUS Queue-PPS-In'
+          type: DEPENDENT
+          key: radiusstats.global.internal.pps_in
+          units: pps
+          description: 'Current Queue-PPS-In rate reported by FreeRADIUS (instantaneous, not a cumulative counter).'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Queue-PPS-In = ([0-9]+)'
+                - \1
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 30m
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: internal
+            - tag: component
+              value: statistics
+        - uuid: 446aa0804b004d8fb3415ffbd4de52e1
+          name: 'FreeRADIUS Queue-PPS-Out'
+          type: DEPENDENT
+          key: radiusstats.global.internal.pps_out
+          units: pps
+          description: 'Current Queue-PPS-Out rate reported by FreeRADIUS (instantaneous, not a cumulative counter).'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Queue-PPS-Out = ([0-9]+)'
+                - \1
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 30m
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: internal
+            - tag: component
+              value: statistics
+        - uuid: 1322a6c3f81a43e8a1506f4d4336f8ef
+          name: 'FreeRADIUS Queue-Len-Acct'
+          type: DEPENDENT
+          key: radiusstats.global.internal.queue_acct
+          description: 'Current value of Queue-Len-Acct reported by FreeRADIUS (instantaneous, not a cumulative counter).'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Queue-Len-Acct = ([0-9]+)'
+                - \1
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 30m
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: internal
+            - tag: component
+              value: statistics
+        - uuid: 569099a07ee94f56b3e478179d36eaba
+          name: 'FreeRADIUS Queue-Len-Auth'
+          type: DEPENDENT
+          key: radiusstats.global.internal.queue_auth
+          description: 'Current value of Queue-Len-Auth reported by FreeRADIUS (instantaneous, not a cumulative counter).'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Queue-Len-Auth = ([0-9]+)'
+                - \1
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 30m
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: internal
+            - tag: component
+              value: statistics
+          triggers:
+            - uuid: 1774fa6bc2e34a40ad8d2b5272cf7f2b
+              expression: 'last(/FreeRADIUS Statistics by Zabbix agent/radiusstats.global.internal.queue_auth)>{$RADIUS.QUEUE.AUTH.WARN}'
+              name: 'FreeRADIUS auth queue backlog on {HOST.NAME}'
+              priority: WARNING
+              description: 'FreeRADIUS-Queue-Len-Auth exceeded {$RADIUS.QUEUE.AUTH.WARN}. Authentication requests are backing up faster than they are being processed.'
+              tags:
+                - tag: category
+                  value: internal
+                - tag: component
+                  value: statistics
+        - uuid: 88fe0417dc04428d88fee0d4c30c4ab1
+          name: 'FreeRADIUS Queue-Len-Detail'
+          type: DEPENDENT
+          key: radiusstats.global.internal.queue_detail
+          description: 'Current value of Queue-Len-Detail reported by FreeRADIUS (instantaneous, not a cumulative counter).'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Queue-Len-Detail = ([0-9]+)'
+                - \1
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 30m
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: internal
+            - tag: component
+              value: statistics
+        - uuid: 873472b0c30f40bebcb4e7f81ad5345d
+          name: 'FreeRADIUS Queue-Len-Internal'
+          type: DEPENDENT
+          key: radiusstats.global.internal.queue_internal
+          description: 'Current value of Queue-Len-Internal reported by FreeRADIUS (instantaneous, not a cumulative counter).'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Queue-Len-Internal = ([0-9]+)'
+                - \1
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 30m
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: internal
+            - tag: component
+              value: statistics
+        - uuid: 7668b2454acf4a798dd0c1cc2a856976
+          name: 'FreeRADIUS Queue-Len-Proxy'
+          type: DEPENDENT
+          key: radiusstats.global.internal.queue_proxy
+          description: 'Current value of Queue-Len-Proxy reported by FreeRADIUS (instantaneous, not a cumulative counter).'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Queue-Len-Proxy = ([0-9]+)'
+                - \1
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 30m
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: internal
+            - tag: component
+              value: statistics
+        - uuid: 4dc7b865befc44c8ae7e665e4b50e395
+          name: 'FreeRADIUS Threads-Active'
+          type: DEPENDENT
+          key: radiusstats.global.internal.threads_active
+          description: 'Current value of Threads-Active reported by FreeRADIUS (instantaneous, not a cumulative counter).'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Stats-Threads-Active = ([0-9]+)'
+                - \1
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: internal
+            - tag: component
+              value: statistics
+          triggers:
+            - uuid: 3d14f721cddd41ee9d9f9cbfdc86807c
+              expression: 'nodata(/FreeRADIUS Statistics by Zabbix agent/radiusstats.global.internal.threads_active,10m)=1'
+              name: 'Unable to query FreeRADIUS status server on {HOST.NAME}'
+              priority: AVERAGE
+              description: 'No data has been received from the FreeRADIUS status server for 10 minutes. Check that the status virtual server is enabled, the secret in freeradius_stats.secret matches clients.conf, and that the port/firewall allow the query from the Zabbix agent host. (Checked via this item specifically because it has no discard-unchanged-heartbeat preprocessing, unlike most other dependent items here, so nodata() cannot give a false positive during quiet periods.)'
+              tags:
+                - tag: category
+                  value: info
+                - tag: component
+                  value: statistics
+        - uuid: 239481c840964b178a81e5d62b474c35
+          name: 'FreeRADIUS Threads-Max'
+          type: DEPENDENT
+          key: radiusstats.global.internal.threads_max
+          description: 'Configured maximum number of worker threads (static value, changes only on restart/reload).'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Stats-Threads-Max = ([0-9]+)'
+                - \1
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 12h
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: internal
+            - tag: component
+              value: statistics
+        - uuid: cf910ae1e98142a2a1d728a06d4d8243
+          name: 'FreeRADIUS Threads-Total'
+          type: DEPENDENT
+          key: radiusstats.global.internal.threads_total
+          description: 'Current value of Threads-Total reported by FreeRADIUS (instantaneous, not a cumulative counter).'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Stats-Threads-Total = ([0-9]+)'
+                - \1
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 30m
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: internal
+            - tag: component
+              value: statistics
+        - uuid: f6bcde6a063048678cce1c7f756569b0
+          name: 'FreeRADIUS Proxy-Acct-Dropped-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyacct.dropped
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Acct-Dropped-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Accounting.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Acct-Dropped-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-accounting
+            - tag: component
+              value: statistics
+        - uuid: ad0b853a9fe14b5dbd0198a244392713
+          name: 'FreeRADIUS Proxy-Acct-Duplicate-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyacct.duplicate
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Acct-Duplicate-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Accounting.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Acct-Duplicate-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-accounting
+            - tag: component
+              value: statistics
+        - uuid: 491aaf229dd94f8c9fd10e887ddab272
+          name: 'FreeRADIUS Proxy-Acct-Invalid-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyacct.invalid
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Acct-Invalid-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Accounting.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Acct-Invalid-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-accounting
+            - tag: component
+              value: statistics
+        - uuid: cd869e79f924483c9cbd253e85f77090
+          name: 'FreeRADIUS Proxy-Acct-Malformed-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyacct.malformed
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Acct-Malformed-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Accounting.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Acct-Malformed-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-accounting
+            - tag: component
+              value: statistics
+        - uuid: 1a954ddb27c849b4967011de55db223c
+          name: 'FreeRADIUS Proxy-Accounting-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyacct.requests
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Accounting-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Accounting.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Accounting-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-accounting
+            - tag: component
+              value: statistics
+        - uuid: bba0b13420b943c9acfc2e16a7ea7644
+          name: 'FreeRADIUS Proxy-Accounting-Responses rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyacct.responses
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Accounting-Responses per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Accounting.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Accounting-Responses = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-accounting
+            - tag: component
+              value: statistics
+        - uuid: 01e6023487d74ee58f9a2763c73da6f2
+          name: 'FreeRADIUS Proxy-Acct-Unknown-Types rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyacct.unknown_types
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Acct-Unknown-Types per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Accounting.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Acct-Unknown-Types = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-accounting
+            - tag: component
+              value: statistics
+        - uuid: 28c96f97310e4dae91beb8ee80e602ff
+          name: 'FreeRADIUS Proxy-Access-Accepts rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyauth.accepts
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Access-Accepts per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Access-Accepts = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-auth
+            - tag: component
+              value: statistics
+        - uuid: bae22c694ee841dea3022d37ca91dfaf
+          name: 'FreeRADIUS Proxy-Access-Challenges rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyauth.challenges
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Access-Challenges per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Access-Challenges = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-auth
+            - tag: component
+              value: statistics
+        - uuid: f53faa3803864beb865d963cb744cbb9
+          name: 'FreeRADIUS Proxy-Auth-Dropped-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyauth.dropped
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Auth-Dropped-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Auth-Dropped-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-auth
+            - tag: component
+              value: statistics
+        - uuid: 58f141a06e2a43c38d0e93dbb0e3bdea
+          name: 'FreeRADIUS Proxy-Auth-Duplicate-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyauth.duplicate
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Auth-Duplicate-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Auth-Duplicate-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-auth
+            - tag: component
+              value: statistics
+        - uuid: 6e115eed1bb7416284f4837c36a11d3f
+          name: 'FreeRADIUS Proxy-Auth-Invalid-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyauth.invalid
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Auth-Invalid-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Auth-Invalid-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-auth
+            - tag: component
+              value: statistics
+        - uuid: 8b4f58f4a96244e0bd5b993ff21708a4
+          name: 'FreeRADIUS Proxy-Auth-Malformed-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyauth.malformed
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Auth-Malformed-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Auth-Malformed-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-auth
+            - tag: component
+              value: statistics
+        - uuid: f143b24df77a4cd6a967ab79561da79f
+          name: 'FreeRADIUS Proxy-Access-Rejects rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyauth.rejects
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Access-Rejects per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Access-Rejects = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-auth
+            - tag: component
+              value: statistics
+        - uuid: 4341aaee81924d86b5cd280035cf66da
+          name: 'FreeRADIUS Proxy-Access-Requests rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyauth.requests
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Access-Requests per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Access-Requests = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-auth
+            - tag: component
+              value: statistics
+        - uuid: 3249f11430134bd384b30974b39d40cb
+          name: 'FreeRADIUS Proxy-Auth-Responses rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyauth.responses
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Auth-Responses per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Auth-Responses = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-auth
+            - tag: component
+              value: statistics
+        - uuid: 4173fc2cd9da4bdc8543aef88b6fe5b5
+          name: 'FreeRADIUS Proxy-Auth-Unknown-Types rate'
+          type: DEPENDENT
+          key: radiusstats.global.proxyauth.unknown_types
+          value_type: FLOAT
+          units: /s
+          description: 'Rate of Proxy-Auth-Unknown-Types per second, computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient invalid delta right after a restart - Zabbix discards it automatically). Source: FreeRADIUS status server, category Proxy Authentication.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'FreeRADIUS-Total-Proxy-Auth-Unknown-Types = ([0-9]+)'
+                - \1
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          tags:
+            - tag: category
+              value: proxy-auth
+            - tag: component
+              value: statistics
+        - uuid: e9aff3cca61444d1bb30672d57dc8518
+          name: 'FreeRADIUS statistics: global raw data'
+          key: 'radiusstats.global[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.GLOBAL}]'
+          delay: 2m
+          history: '0'
+          value_type: TEXT
+          description: 'Raw reply from the FreeRADIUS status server (radclient status query). Feeds all other radiusstats.global.* items as a dependent-item master; not meant to be read directly. History disabled (0) since only the parsed dependent items need to be kept. Liveness/failure detection is done via nodata() on the internal.threads_active dependent item instead of on this raw item, since history=0 items do not reliably support nodata(). Custom timeout (6s) accommodates radclient retries (-r 2 -t 2, worst case ~4s).'
+          timeout: 6s
+          tags:
+            - tag: component
+              value: statistics
+            - tag: stage
+              value: raw
+      discovery_rules:
+        - uuid: cf36dc2b385d4eb4b8e446af2f47895a
+          name: 'FreeRADIUS clients discovery'
+          key: 'radiusclient.discovery[{$RADIUS.CLIENTS}]'
+          delay: 1h
+          description: 'Discovers RADIUS NAS clients to monitor individually, from the manually maintained {$RADIUS.CLIENTS} macro (format: ip1:label1,ip2:label2).'
+          item_prototypes:
+            - uuid: 62bb4e760cee4c4db42f147d6c09b54d
+              name: 'FreeRADIUS client Access-Accepts: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.access_accepts[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Access-Accepts per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Access-Accepts = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: 1ec2387072ba4f2b9bc401068e7cfa13
+              name: 'FreeRADIUS client Access-Challenges: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.access_challenges[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Access-Challenges per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Access-Challenges = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: 60990df3ebf948a3979a2bbd16c6d0b9
+              name: 'FreeRADIUS client Access-Rejects: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.access_rejects[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Access-Rejects per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Access-Rejects = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+              trigger_prototypes:
+                - uuid: 5b6dbeb207624b81b808438eeb9c70d7
+                  expression: 'avg(/FreeRADIUS Statistics by Zabbix agent/radiusstats.client.access_rejects[{#CLIENTIP}],10m)>{$RADIUS.CLIENT.REJECT.WARN}'
+                  name: 'High Access-Reject rate from client {#CLIENTLABEL} ({#CLIENTIP})'
+                  priority: WARNING
+                  description: 'Average Access-Reject rate from this specific NAS over the last 10 minutes exceeded {$RADIUS.CLIENT.REJECT.WARN} rejects/s. May indicate a misconfigured device, expired credentials, or a brute-force attempt via this NAS.'
+                  tags:
+                    - tag: client
+                      value: '{#CLIENTIP}'
+                    - tag: component
+                      value: statistics
+            - uuid: d9c970a665a746b09b219a5d87d4dc77
+              name: 'FreeRADIUS client Access-Requests: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.access_requests[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Access-Requests per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Access-Requests = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+              trigger_prototypes:
+                - uuid: 3d6271477dae466da651a569da45ca2d
+                  expression: 'nodata(/FreeRADIUS Statistics by Zabbix agent/radiusstats.client.access_requests[{#CLIENTIP}],10m)=1'
+                  name: 'Unable to query FreeRADIUS client statistics for {#CLIENTLABEL} ({#CLIENTIP}) on {HOST.NAME}'
+                  priority: AVERAGE
+                  description: 'No data has been received for this client''s statistics for 10 minutes. Check that the IP in {$RADIUS.CLIENTS} matches a configured (non-RadSec) client in clients.conf. (Checked via this item specifically - no discard-unchanged-heartbeat here, so nodata() cannot give a false positive during quiet periods.)'
+                  tags:
+                    - tag: client
+                      value: '{#CLIENTIP}'
+                    - tag: component
+                      value: statistics
+            - uuid: 794b28ba329441a7a85831831062a405
+              name: 'FreeRADIUS client Acct-Dropped-Requests: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.acct_dropped[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Acct-Dropped-Requests per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Acct-Dropped-Requests = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: 7258ef0df289451299577fa14501dac4
+              name: 'FreeRADIUS client Acct-Duplicate-Requests: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.acct_duplicate[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Acct-Duplicate-Requests per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Acct-Duplicate-Requests = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: 26d7ce9af7394e07b55afafa1279936a
+              name: 'FreeRADIUS client Acct-Invalid-Requests: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.acct_invalid[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Acct-Invalid-Requests per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Acct-Invalid-Requests = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: f2fee23abe4848438312ed8049cb2414
+              name: 'FreeRADIUS client Acct-Malformed-Requests: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.acct_malformed[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Acct-Malformed-Requests per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Acct-Malformed-Requests = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: ac7fdd5c79cf497dad5ab099b50b8382
+              name: 'FreeRADIUS client Accounting-Requests: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.acct_requests[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Accounting-Requests per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Accounting-Requests = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: b55c06a80c774c25ba1a76f90d1370d2
+              name: 'FreeRADIUS client Accounting-Responses: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.acct_responses[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Accounting-Responses per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Accounting-Responses = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: 1d3d43bb48ec42a8a86f84eb8f58ba85
+              name: 'FreeRADIUS client Acct-Unknown-Types: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.acct_unknown_types[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Acct-Unknown-Types per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Acct-Unknown-Types = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: 1334707600aa4bbd8d05cced22375658
+              name: 'FreeRADIUS client Auth-Dropped-Requests: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.auth_dropped[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Auth-Dropped-Requests per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Auth-Dropped-Requests = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: 309e2cc6a7584ecb8c2d719cac45021d
+              name: 'FreeRADIUS client Auth-Duplicate-Requests: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.auth_duplicate[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Auth-Duplicate-Requests per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Auth-Duplicate-Requests = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: 70807a30930c435db078ba55f8ca17bc
+              name: 'FreeRADIUS client Auth-Invalid-Requests: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.auth_invalid[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Auth-Invalid-Requests per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Auth-Invalid-Requests = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: e024396c7de24ee78d1e13d5c1d5580a
+              name: 'FreeRADIUS client Auth-Malformed-Requests: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.auth_malformed[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Auth-Malformed-Requests per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Auth-Malformed-Requests = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: 44b3f0a82fdf46dbbb033e89731955cd
+              name: 'FreeRADIUS client Auth-Responses: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.auth_responses[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Auth-Responses per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Auth-Responses = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: de6eb40451aa4c649b835297e019eed8
+              name: 'FreeRADIUS client Auth-Unknown-Types: {#CLIENTLABEL} ({#CLIENTIP}) rate'
+              type: DEPENDENT
+              key: 'radiusstats.client.auth_unknown_types[{#CLIENTIP}]'
+              value_type: FLOAT
+              units: /s
+              description: 'Rate of Auth-Unknown-Types per second for this RADIUS client ({#CLIENTIP}), computed by Zabbix "Change per second" preprocessing over the underlying FreeRADIUS cumulative counter (resets to 0 on FreeRADIUS restart, which may cause one transient negative-looking gap in the rate right after a restart - Zabbix discards that single invalid delta automatically).'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'FreeRADIUS-Total-Auth-Unknown-Types = ([0-9]+)'
+                    - \1
+                - type: CHANGE_PER_SECOND
+              master_item:
+                key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+            - uuid: c89cc841767c4102add104814fcb46f2
+              name: 'FreeRADIUS client stats: {#CLIENTLABEL} ({#CLIENTIP})'
+              key: 'radiusstats.client[{$RADIUS.STATUS.HOST},{$RADIUS.STATUS.PORT},{$RADIUS.STATS.TYPE.CLIENT},{#CLIENTIP}]'
+              delay: 2m
+              history: '0'
+              value_type: TEXT
+              description: 'Raw reply from the FreeRADIUS status server for a single NAS client (radclient status query with FreeRADIUS-Stats-Client-IP-Address). Feeds all radiusstats.client.* item prototypes as a dependent-item master. Liveness/failure detection is done via nodata() on the client.access_requests dependent item prototype instead of on this raw item (history=0 items do not reliably support nodata()). Custom timeout (6s) accommodates radclient retries (-r 2 -t 2, worst case ~4s).'
+              timeout: 6s
+              tags:
+                - tag: client
+                  value: '{#CLIENTIP}'
+                - tag: component
+                  value: statistics
+          graph_prototypes:
+            - uuid: 587bc78269c54912bdda53a749b0a9fd
+              name: 'FreeRADIUS Client Access Rate for {#CLIENTLABEL} ({#CLIENTIP})'
+              show_work_period: 'NO'
+              ymin_type_1: FIXED
+              graph_items:
+                - color: 1A7C11
+                  calc_fnc: ALL
+                  item:
+                    host: 'FreeRADIUS Statistics by Zabbix agent'
+                    key: 'radiusstats.client.access_accepts[{#CLIENTIP}]'
+                - sortorder: '1'
+                  color: 78909C
+                  calc_fnc: ALL
+                  item:
+                    host: 'FreeRADIUS Statistics by Zabbix agent'
+                    key: 'radiusstats.client.access_challenges[{#CLIENTIP}]'
+                - sortorder: '2'
+                  color: F63100
+                  calc_fnc: ALL
+                  item:
+                    host: 'FreeRADIUS Statistics by Zabbix agent'
+                    key: 'radiusstats.client.access_rejects[{#CLIENTIP}]'
+                - sortorder: '3'
+                  color: '263238'
+                  calc_fnc: ALL
+                  item:
+                    host: 'FreeRADIUS Statistics by Zabbix agent'
+                    key: 'radiusstats.client.access_requests[{#CLIENTIP}]'
+      tags:
+        - tag: class
+          value: application
+        - tag: target
+          value: freeradius
+      macros:
+        - macro: '{$RADIUS.ACCT.DROPPED.WARN}'
+          value: '0.01'
+          description: 'Global Acct-Dropped rate threshold (dropped/s, averaged over 10 minutes) that triggers a warning. Starting default - tune to your observed baseline.'
+        - macro: '{$RADIUS.ACCT.INVALID.WARN}'
+          value: '0.01'
+          description: 'Global Acct-Invalid rate threshold (invalid/s, averaged over 10 minutes) that triggers a warning. Starting default - tune to your observed baseline.'
+        - macro: '{$RADIUS.AUTH.DROPPED.WARN}'
+          value: '0.01'
+          description: 'Global Auth-Dropped rate threshold (dropped/s, averaged over 10 minutes) that triggers a warning. Starting default - tune to your observed baseline.'
+        - macro: '{$RADIUS.AUTH.INVALID.WARN}'
+          value: '0.01'
+          description: 'Global Auth-Invalid rate threshold (invalid/s, averaged over 10 minutes) that triggers a warning. Starting default - tune to your observed baseline.'
+        - macro: '{$RADIUS.AUTH.MALFORMED.WARN}'
+          value: '0.01'
+          description: 'Global Auth-Malformed rate threshold (malformed/s, averaged over 10 minutes) that triggers a warning. Starting default - tune to your observed baseline.'
+        - macro: '{$RADIUS.CLIENT.REJECT.WARN}'
+          value: '0.5'
+          description: 'Per-client Access-Reject rate threshold (rejects/s, averaged over 10 minutes) that triggers a warning. Starting default - tune to your observed baseline.'
+        - macro: '{$RADIUS.CLIENTS}'
+          value: '10.0.0.1:ap-example'
+          description: 'Comma-separated list of NAS clients to monitor individually. Format: ip1:label1,ip2:label2. Update with real NAS IPs. Do not include RadSec/TLS clients - FreeRADIUS does not provide per-client statistics for them, the item would stay permanently "not supported".'
+        - macro: '{$RADIUS.QUEUE.AUTH.WARN}'
+          value: '50'
+          description: 'FreeRADIUS-Queue-Len-Auth threshold that triggers a backlog warning.'
+        - macro: '{$RADIUS.REJECT.RATE.WARN}'
+          value: '1'
+          description: 'Global Access-Reject rate threshold (rejects/s, averaged over 5 minutes) that triggers a warning. Starting default - tune to your observed baseline.'
+        - macro: '{$RADIUS.STATS.TYPE.CLIENT}'
+          value: '0x2f'
+          description: 'FreeRADIUS-Statistics-Type bitmask for per-client queries: Client(32)+Auth(1)+Acct(2)+ProxyAuth(4)+ProxyAcct(8).'
+        - macro: '{$RADIUS.STATS.TYPE.GLOBAL}'
+          value: '0x1f'
+          description: 'FreeRADIUS-Statistics-Type bitmask for global queries: Auth(1)+Acct(2)+ProxyAuth(4)+ProxyAcct(8)+Internal(16).'
+        - macro: '{$RADIUS.STATUS.HOST}'
+          value: 127.0.0.1
+          description: 'Address of the FreeRADIUS status server. Override per-host if it listens elsewhere.'
+        - macro: '{$RADIUS.STATUS.PORT}'
+          value: '18121'
+          description: 'Default port of the FreeRADIUS status server. Override per-host (e.g. {$RADIUS.STATUS.PORT}=18131) where a non-default port is configured.'
+        - macro: '{$RADIUS.THREADS.NEARMAX.WARN}'
+          value: '90'
+          description: 'Percentage of Threads-Max (Active/Max*100) that triggers a warning.'
+      dashboards:
+        - uuid: c6ae028b89ce42e7a906b2b9f91c0a62
+          name: 'FreeRADIUS Statistics'
+          pages:
+            - widgets:
+                - type: problems
+                  width: '72'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: KYVNG
+                    - type: INTEGER
+                      name: show_opdata
+                      value: '2'
+                    - type: INTEGER
+                      name: tags.0.operator
+                      value: '0'
+                    - type: STRING
+                      name: tags.0.tag
+                      value: component
+                    - type: STRING
+                      name: tags.0.value
+                      value: statistics
+                - type: item
+                  name: 'Threads Active'
+                  'y': '4'
+                  width: '12'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FreeRADIUS Statistics by Zabbix agent'
+                        key: radiusstats.global.internal.threads_active
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: show.1
+                      value: '4'
+                    - type: INTEGER
+                      name: units_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: units_show
+                      value: '0'
+                - type: graph
+                  'y': '6'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: 'FreeRADIUS Statistics by Zabbix agent'
+                        name: 'FreeRADIUS Authentication Accepts and Rejects'
+                    - type: STRING
+                      name: reference
+                      value: DTJWK
+                - type: graph
+                  'y': '11'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: 'FreeRADIUS Statistics by Zabbix agent'
+                        name: 'FreeRADIUS Internal Queue Lengths'
+                    - type: STRING
+                      name: reference
+                      value: XVHHO
+                - type: graph
+                  'y': '16'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: 'FreeRADIUS Statistics by Zabbix agent'
+                        name: 'FreeRADIUS Authentication Errors'
+                    - type: STRING
+                      name: reference
+                      value: XJDNM
+                - type: graph
+                  'y': '21'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: 'FreeRADIUS Statistics by Zabbix agent'
+                        name: 'FreeRADIUS Proxy Authentication Accepts and Rejects'
+                    - type: STRING
+                      name: reference
+                      value: NJAGA
+                - type: graphprototype
+                  'y': '26'
+                  width: '71'
+                  height: '5'
+                  fields:
+                    - type: ITEM_PROTOTYPE
+                      name: itemid.0
+                      value:
+                        host: 'FreeRADIUS Statistics by Zabbix agent'
+                        key: 'radiusstats.client.access_requests[{#CLIENTIP}]'
+                    - type: STRING
+                      name: reference
+                      value: GZMXE
+                    - type: INTEGER
+                      name: source_type
+                      value: '3'
+                - type: item
+                  name: 'Threads Max'
+                  x: '12'
+                  'y': '4'
+                  width: '12'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FreeRADIUS Statistics by Zabbix agent'
+                        key: radiusstats.global.internal.threads_max
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: units_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: units_show
+                      value: '0'
+                - type: item
+                  name: 'Queue Len Auth'
+                  x: '24'
+                  'y': '4'
+                  width: '14'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FreeRADIUS Statistics by Zabbix agent'
+                        key: radiusstats.global.internal.queue_auth
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: show.1
+                      value: '4'
+                    - type: INTEGER
+                      name: show.2
+                      value: '5'
+                    - type: INTEGER
+                      name: units_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: units_show
+                      value: '0'
+                - type: graph
+                  x: '36'
+                  'y': '6'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: 'FreeRADIUS Statistics by Zabbix agent'
+                        name: 'FreeRADIUS Accounting Traffic'
+                    - type: STRING
+                      name: reference
+                      value: XAVIL
+                - type: graph
+                  x: '36'
+                  'y': '11'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: 'FreeRADIUS Statistics by Zabbix agent'
+                        name: 'FreeRADIUS Worker Threads'
+                    - type: STRING
+                      name: reference
+                      value: YKUNM
+                - type: graph
+                  x: '36'
+                  'y': '16'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: 'FreeRADIUS Statistics by Zabbix agent'
+                        name: 'FreeRADIUS Accounting Errors'
+                    - type: STRING
+                      name: reference
+                      value: FCCMI
+                - type: graph
+                  x: '36'
+                  'y': '21'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: 'FreeRADIUS Statistics by Zabbix agent'
+                        name: 'FreeRADIUS Proxy Accounting Traffic'
+                    - type: STRING
+                      name: reference
+                      value: KDXSU
+                - type: item
+                  name: 'Access Rejects rate'
+                  x: '38'
+                  'y': '4'
+                  width: '21'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FreeRADIUS Statistics by Zabbix agent'
+                        key: radiusstats.global.auth.access_rejects
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: show.1
+                      value: '5'
+                - type: item
+                  name: 'Start Time'
+                  x: '59'
+                  'y': '4'
+                  width: '13'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FreeRADIUS Statistics by Zabbix agent'
+                        key: radiusstats.global.info.start_time
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: units_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: units_show
+                      value: '0'
+                    - type: INTEGER
+                      name: value_size
+                      value: '35'
+  triggers:
+    - uuid: ec3ca6a049e74bf4913374b56888edf3
+      expression: 'last(/FreeRADIUS Statistics by Zabbix agent/radiusstats.global.internal.threads_active)/last(/FreeRADIUS Statistics by Zabbix agent/radiusstats.global.internal.threads_max)*100>{$RADIUS.THREADS.NEARMAX.WARN}'
+      name: 'FreeRADIUS worker threads near max on {HOST.NAME}'
+      priority: WARNING
+      description: 'Active worker threads exceed {$RADIUS.THREADS.NEARMAX.WARN}% of Threads-Max. The server is close to its configured thread pool limit; consider raising max_servers or investigating why requests are taking long to process.'
+      tags:
+        - tag: category
+          value: internal
+        - tag: component
+          value: statistics
+  graphs:
+    - uuid: 4e6b4996adf0433d98b22a74f30aa2fe
+      name: 'FreeRADIUS Accounting Errors'
+      show_work_period: 'NO'
+      show_triggers: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 1A7C11
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.acct.dropped
+        - sortorder: '1'
+          color: '274482'
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.acct.duplicate
+        - sortorder: '2'
+          color: F63100
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.acct.invalid
+        - sortorder: '3'
+          color: 2774A4
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.acct.malformed
+        - sortorder: '4'
+          color: A54F10
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.acct.unknown_types
+    - uuid: c50f74d8b07c4ef7bc5132ae36dcaee8
+      name: 'FreeRADIUS Accounting Traffic'
+      show_work_period: 'NO'
+      show_triggers: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 1A7C11
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.acct.requests
+        - sortorder: '1'
+          color: 1E88E5
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.acct.responses
+    - uuid: 2db753566ec34557a45fab93478cb147
+      name: 'FreeRADIUS Authentication Accepts and Rejects'
+      show_work_period: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 1A7C11
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.auth.access_accepts
+        - sortorder: '1'
+          color: F63100
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.auth.access_rejects
+    - uuid: a9e87d2cd9164cef80ccda89f6a9135f
+      name: 'FreeRADIUS Authentication Errors'
+      show_work_period: 'NO'
+      show_triggers: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 1A7C11
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.auth.conflicts
+        - sortorder: '1'
+          color: '274482'
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.auth.dropped
+        - sortorder: '2'
+          color: F63100
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.auth.duplicate
+        - sortorder: '3'
+          color: 2774A4
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.auth.invalid
+        - sortorder: '4'
+          color: A54F10
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.auth.malformed
+        - sortorder: '5'
+          color: FC6EA3
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.auth.unknown_types
+    - uuid: 37bb11e8c3c14d30a406e7b09e451702
+      name: 'FreeRADIUS Authentication Requests and Challenges'
+      show_work_period: 'NO'
+      show_triggers: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 78909C
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.auth.access_challenges
+        - sortorder: '1'
+          color: 0080FF
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.auth.access_requests
+    - uuid: 72442a0c35004b34bb9b20c27626889e
+      name: 'FreeRADIUS Internal Queue Lengths'
+      yaxismax: '0'
+      show_work_period: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 1A7C11
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.internal.queue_acct
+        - sortorder: '1'
+          color: '274482'
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.internal.queue_auth
+        - sortorder: '2'
+          color: F63100
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.internal.queue_detail
+        - sortorder: '3'
+          color: 2774A4
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.internal.queue_internal
+        - sortorder: '4'
+          color: A54F10
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.internal.queue_proxy
+    - uuid: 8b1f052b94874aecbb22c36d025dfef3
+      name: 'FreeRADIUS Proxy Accounting Traffic'
+      yaxismax: '0'
+      show_work_period: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 1A7C11
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.proxyacct.requests
+        - sortorder: '1'
+          color: '274482'
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.proxyacct.responses
+    - uuid: 9209172a741141969b2ada3713dc07c2
+      name: 'FreeRADIUS Proxy Authentication Accepts and Rejects'
+      show_work_period: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 1A7C11
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.proxyauth.accepts
+        - sortorder: '1'
+          color: F63100
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.proxyauth.rejects
+    - uuid: fa98fe422e8045438a020950d62f97b0
+      name: 'FreeRADIUS Worker Threads'
+      yaxismax: '0'
+      show_work_period: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 1A7C11
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.internal.threads_active
+        - sortorder: '1'
+          color: FF0000
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.internal.threads_max
+        - sortorder: '2'
+          color: 0080FF
+          calc_fnc: ALL
+          item:
+            host: 'FreeRADIUS Statistics by Zabbix agent'
+            key: radiusstats.global.internal.threads_total

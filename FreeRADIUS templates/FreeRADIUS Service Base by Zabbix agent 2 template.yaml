@@ -1,0 +1,274 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+  - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+    name: lpavlicek templates
+  templates:
+  - uuid: 030f4befdf6c4193b120497979e98444
+    template: FreeRADIUS Service Base by Zabbix agent 2
+    name: FreeRADIUS Service Base by Zabbix agent 2
+    description: 'Monitors the FreeRADIUS systemd service state, UDP/TCP listener availability, radiusd process resource usage and functional RADIUS/EAPOL response correctness via a custom test script (check_fast.sh, run as a dedicated user via sudo).
+
+      Requires Zabbix agent 2 (uses the native systemd.unit.info item key). Requires radius_test_check.sh installed on the host.
+
+      '
+    vendor:
+      name: lpavlicek
+      version: 7.4-1
+    groups:
+    - name: lpavlicek templates
+    items:
+    - uuid: 74cf1a30f624406287f2252903c4d127
+      name: 'FreeRADIUS: Listening on TCP {$RADSEC.PORT} (RadSec)'
+      key: net.tcp.listen[{$RADSEC.PORT}]
+      delay: 2m
+      description: Whether a process is listening on the RadSec (RADIUS/TLS) TCP port. Returns 1 if listening, 0 otherwise. Only meaningful when {$RADSEC.ENABLED}=1.
+      preprocessing:
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 1h
+      tags:
+      - tag: component
+        value: network
+      triggers:
+      - uuid: df01c4597e424d13b9cfaff5dda6de6d
+        expression: '{$RADSEC.ENABLED}=1 and last(/FreeRADIUS Service Base by Zabbix agent 2/net.tcp.listen[{$RADSEC.PORT}])=0'
+        name: FreeRADIUS RadSec listener is not active on TCP {$RADSEC.PORT} on {HOST.NAME}
+        priority: HIGH
+        description: RadSec is enabled ({$RADSEC.ENABLED}=1) but no process is listening on TCP port {$RADSEC.PORT}. Check the RadSec proxy/listener configuration and certificates.
+        dependencies:
+        - name: FreeRADIUS ({$RADIUSD.SERVICE.NAME}) is not active on {HOST.NAME}
+          expression: last(/FreeRADIUS Service Base by Zabbix agent 2/systemd.unit.info["{$RADIUSD.SERVICE.NAME}"])<>"active"
+        tags:
+        - tag: component
+          value: network
+    - uuid: 1cdea7e3522a406f814076807180a16f
+      name: 'FreeRADIUS: Listening on UDP {$RADIUS.ACCT.PORT} (Accounting)'
+      key: net.udp.listen[{$RADIUS.ACCT.PORT}]
+      delay: 2m
+      description: Whether a process is listening on the RADIUS accounting UDP port. Returns 1 if listening, 0 otherwise.
+      preprocessing:
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 1h
+      tags:
+      - tag: component
+        value: network
+      triggers:
+      - uuid: 2f273de150254a3bab1a2d5c04bc3727
+        expression: last(/FreeRADIUS Service Base by Zabbix agent 2/net.udp.listen[{$RADIUS.ACCT.PORT}])=0
+        name: FreeRADIUS is not listening on UDP {$RADIUS.ACCT.PORT} (Accounting) on {HOST.NAME}
+        priority: HIGH
+        description: No process is listening on the RADIUS accounting UDP port {$RADIUS.ACCT.PORT}. Accounting requests will be lost. Check that FreeRADIUS is running and the accounting listener is enabled in its configuration.
+        dependencies:
+        - name: FreeRADIUS ({$RADIUSD.SERVICE.NAME}) is not active on {HOST.NAME}
+          expression: last(/FreeRADIUS Service Base by Zabbix agent 2/systemd.unit.info["{$RADIUSD.SERVICE.NAME}"])<>"active"
+        tags:
+        - tag: component
+          value: network
+    - uuid: 94424e50f0ff41d2b3524227386f3694
+      name: 'FreeRADIUS: Listening on UDP {$RADIUS.AUTH.PORT} (Auth)'
+      key: net.udp.listen[{$RADIUS.AUTH.PORT}]
+      delay: 2m
+      description: Whether a process is listening on the RADIUS authentication UDP port. Returns 1 if listening, 0 otherwise.
+      preprocessing:
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 1h
+      tags:
+      - tag: component
+        value: network
+      triggers:
+      - uuid: 520a6ce1b10448b0bab50b013a5b1bd5
+        expression: last(/FreeRADIUS Service Base by Zabbix agent 2/net.udp.listen[{$RADIUS.AUTH.PORT}])=0
+        name: FreeRADIUS is not listening on UDP {$RADIUS.AUTH.PORT} (Auth) on {HOST.NAME}
+        priority: HIGH
+        description: No process is listening on the RADIUS authentication UDP port {$RADIUS.AUTH.PORT}. Authentication requests will fail. Check that FreeRADIUS is running and the auth listener is enabled in its configuration.
+        dependencies:
+        - name: FreeRADIUS ({$RADIUSD.SERVICE.NAME}) is not active on {HOST.NAME}
+          expression: last(/FreeRADIUS Service Base by Zabbix agent 2/systemd.unit.info["{$RADIUSD.SERVICE.NAME}"])<>"active"
+        tags:
+        - tag: component
+          value: network
+    - uuid: 7aea36190b47472dacdb0f92508e84ca
+      name: 'FreeRADIUS: CPU utilization of {$RADIUSD.PROCESS.NAME}'
+      key: proc.cpu.util[{$RADIUSD.PROCESS.NAME}]
+      delay: 2m
+      value_type: FLOAT
+      units: '%'
+      description: CPU utilization of the {$RADIUSD.PROCESS.NAME} process(es), as a percentage of a single CPU core. Can exceed 100% under multi-threaded load.
+      tags:
+      - tag: component
+        value: performance
+      triggers:
+      - uuid: f12905f1964944f8a2857e07f08b4fd7
+        expression: avg(/FreeRADIUS Service Base by Zabbix agent 2/proc.cpu.util[{$RADIUSD.PROCESS.NAME}],5m) > {$RADIUSD.CPU.MAX.WARN}
+        name: High CPU usage of FreeRADIUS process on {HOST.NAME}
+        priority: WARNING
+        description: Average CPU utilization of the FreeRADIUS process has exceeded {$RADIUSD.CPU.MAX.WARN}% over the last 5 minutes. May indicate an unusually high request rate, a slow module/policy, or an attack.
+        tags:
+        - tag: component
+          value: performance
+    - uuid: a792241f2c844493a9f3528317362048
+      name: 'FreeRADIUS: Memory utilization of {$RADIUSD.PROCESS.NAME}'
+      key: proc.mem[{$RADIUSD.PROCESS.NAME},,,,pmem]
+      delay: 2m
+      value_type: FLOAT
+      units: '%'
+      description: Memory used by the {$RADIUSD.PROCESS.NAME} process(es), as a percentage of total system RAM.
+      tags:
+      - tag: component
+        value: performance
+      triggers:
+      - uuid: f61e04a037ff4950b74444a1a0ebc443
+        expression: avg(/FreeRADIUS Service Base by Zabbix agent 2/proc.mem[{$RADIUSD.PROCESS.NAME},,,,pmem],5m) > {$RADIUSD.MEM.MAX.WARN}
+        name: High memory usage of FreeRADIUS process on {HOST.NAME}
+        priority: WARNING
+        description: Average memory usage of the FreeRADIUS process has exceeded {$RADIUSD.MEM.MAX.WARN}% of system RAM over the last 5 minutes. May indicate a memory leak or abnormal load; watch the trend and consider a controlled restart if it keeps climbing.
+        tags:
+        - tag: component
+          value: performance
+    - uuid: af1347ab2f334702a551d1700676b637
+      name: 'FreeRADIUS: Number of running {$RADIUSD.PROCESS.NAME} processes'
+      key: proc.num[{$RADIUSD.PROCESS.NAME}]
+      delay: 2m
+      description: Number of running processes matching the name {$RADIUSD.PROCESS.NAME}. Normally 1, since FreeRADIUS runs as a single multi-threaded process.
+      preprocessing:
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 1h
+      tags:
+      - tag: component
+        value: service
+      triggers:
+      - uuid: 1f63e3ddbc5f413c87ded677a8d83a66
+        expression: last(/FreeRADIUS Service Base by Zabbix agent 2/proc.num[{$RADIUSD.PROCESS.NAME}])=0
+        name: FreeRADIUS process is not running on {HOST.NAME}
+        priority: HIGH
+        description: No process named {$RADIUSD.PROCESS.NAME} is running. RADIUS requests are not being served — investigate immediately.
+        dependencies:
+        - name: FreeRADIUS ({$RADIUSD.SERVICE.NAME}) is not active on {HOST.NAME}
+          expression: last(/FreeRADIUS Service Base by Zabbix agent 2/systemd.unit.info["{$RADIUSD.SERVICE.NAME}"])<>"active"
+        tags:
+        - tag: component
+          value: service
+    - uuid: b28d30126e544c0a9b03cda6661364c7
+      name: 'FreeRADIUS functional tests: raw output'
+      key: radiustest.raw
+      delay: 10m
+      value_type: TEXT
+      timeout: 20s
+      tags:
+      - tag: component
+        value: functional-test
+      - tag: stage
+        value: raw
+      triggers:
+      - uuid: 0987a225649d4a27b4a4cfdc4033fd9d
+        expression: find(/FreeRADIUS Service Base by Zabbix agent 2/radiustest.raw,,"like","OK:") = 0 and find(/FreeRADIUS Service Base by Zabbix agent 2/radiustest.raw,,"like","BAD:") = 0
+        name: FreeRADIUS functional tests non-standard response
+        priority: AVERAGE
+        dependencies:
+        - name: FreeRADIUS ({$RADIUSD.SERVICE.NAME}) is not active on {HOST.NAME}
+          expression: last(/FreeRADIUS Service Base by Zabbix agent 2/systemd.unit.info["{$RADIUSD.SERVICE.NAME}"])<>"active"
+        tags:
+        - tag: component
+          value: functional-test
+        description: The raw test output contains neither 'OK:' nor 'BAD:' lines, meaning check_fast.sh ran but its output doesn't match the format this template expects (e.g. the test script itself changed). Individual test results cannot be trusted until this is investigated.
+      - uuid: 3008b5a2d49f42358c1b62f58f9502d5
+        expression: nodata(/FreeRADIUS Service Base by Zabbix agent 2/radiustest.raw,30m)=1
+        name: Unable to run FreeRADIUS functional tests on {HOST.NAME}
+        priority: AVERAGE
+        description: No functional test results received for 30 minutes. Check sudoers rule for zabbix→pavlicek, that check_fast.sh still exists at the configured path, and re-test manually with "sudo -u zabbix /etc/zabbix/scripts/radius_test_check.sh raw".
+        tags:
+        - tag: component
+          value: functional-test
+      description: Raw output from the RADIUS/EAPOL functional test suite (check_fast.sh), run via sudo as a dedicated non-privileged user. Feeds the per-test dependent items (radiustest.result) as a dependent-item master; not meant to be read directly.
+    - uuid: f992f1b65e004e5097faa906424cc411
+      name: 'FreeRADIUS: systemd service state'
+      key: systemd.unit.info["{$RADIUSD.SERVICE.NAME}"]
+      value_type: TEXT
+      description: Current systemd ActiveState of {$RADIUSD.SERVICE.NAME} (e.g. active, inactive, failed, activating).
+      preprocessing:
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 1h
+      tags:
+      - tag: component
+        value: service
+      triggers:
+      - uuid: 6c4ad4ca55c04f46a0ed5e87b2f0f580
+        expression: last(/FreeRADIUS Service Base by Zabbix agent 2/systemd.unit.info["{$RADIUSD.SERVICE.NAME}"])<>"active"
+        name: FreeRADIUS ({$RADIUSD.SERVICE.NAME}) is not active on {HOST.NAME}
+        opdata: '{ITEM.LASTVALUE}'
+        priority: HIGH
+        description: The FreeRADIUS systemd unit {$RADIUSD.SERVICE.NAME} is not in the "active" state. Check "systemctl status {$RADIUSD.SERVICE.NAME}" and the FreeRADIUS logs for the cause.
+        tags:
+        - tag: component
+          value: service
+    discovery_rules:
+    - uuid: a7dbb0def01c4931bed56dc8578d9e28
+      name: FreeRADIUS functional tests discovery
+      key: radiustest.discovery
+      delay: 2h
+      item_prototypes:
+      - uuid: 4037cd3abedd4b0fba9cf06cb59554fd
+        name: 'FreeRADIUS test: {#TESTNAME}'
+        type: DEPENDENT
+        key: radiustest.result["{#TESTNAME}"]
+        value_type: TEXT
+        preprocessing:
+        - type: REGEX
+          parameters:
+          - ((?:OK|BAD):\s+.+?)\s+{#TESTNAME}
+          - \1
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 2h
+        master_item:
+          key: radiustest.raw
+        tags:
+        - tag: component
+          value: functional-test
+        - tag: test
+          value: '{#TESTNAME}'
+        trigger_prototypes:
+        - uuid: 6c30bab9a18842e59ebee7a97e58b0b5
+          expression: find(/FreeRADIUS Service Base by Zabbix agent 2/radiustest.result["{#TESTNAME}"],,"like","BAD:") = 1
+          name: 'RADIUS test failed: {#TESTNAME} on {HOST.NAME}'
+          opdata: '{ITEM.LASTVALUE}'
+          priority: WARNING
+          description: This RADIUS/EAPOL functional test is failing (Access-Reject/FAILURE). Re-run manually via checkserver.sh for details, check the corresponding client/config, and FreeRADIUS logs.
+          dependencies:
+          - name: FreeRADIUS ({$RADIUSD.SERVICE.NAME}) is not active on {HOST.NAME}
+            expression: last(/FreeRADIUS Service Base by Zabbix agent 2/systemd.unit.info["{$RADIUSD.SERVICE.NAME}"])<>"active"
+          tags:
+          - tag: component
+            value: functional-test
+          - tag: test
+            value: '{#TESTNAME}'
+        description: 'Result line (''OK: ...'' or ''BAD: ...'') for this specific RADIUS/EAPOL functional test, extracted from the raw test output (radiustest.raw).'
+      timeout: 20s
+      description: Discovers the current set of RADIUS/EAPOL functional tests from the live output of check_fast.sh, so tests can be added or removed over time without editing the template.
+    tags:
+    - tag: class
+      value: application
+    - tag: target
+      value: freeradius
+    macros:
+    - macro: '{$RADIUS.ACCT.PORT}'
+      value: '1813'
+    - macro: '{$RADIUS.AUTH.PORT}'
+      value: '1812'
+    - macro: '{$RADIUSD.CPU.MAX.WARN}'
+      value: '80'
+    - macro: '{$RADIUSD.MEM.MAX.WARN}'
+      value: '50'
+    - macro: '{$RADIUSD.PROCESS.NAME}'
+      value: freeradius
+    - macro: '{$RADIUSD.SERVICE.NAME}'
+      value: freeradius.service
+    - macro: '{$RADSEC.ENABLED}'
+      value: '1'
+    - macro: '{$RADSEC.PORT}'
+      value: '2083'
