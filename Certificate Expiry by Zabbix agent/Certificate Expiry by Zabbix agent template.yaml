@@ -1,0 +1,94 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 30ccdbd814924df28da32783dff70feb
+      template: 'Certificate Expiry by Zabbix agent'
+      name: 'Certificate Expiry by Zabbix agent'
+      description: 'Monitors the remaining validity of X.509 certificate files (single or PEM bundles) via Zabbix agent, based on the {$CERTFILES} macro. Every certificate found in a bundle is discovered and monitored individually by its Common Name (CN). Requires cert_check.sh installed on the host and registered as a Zabbix agent UserParameter.'
+      vendor:
+        name: lpavlicek
+        version: 7.4-2
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: a5f3bc637db54c2dbf29d05fe0007240
+          name: 'Certificate files configuration check'
+          key: 'certfile.filecheck[{$CERTFILES}]'
+          delay: 1h
+          value_type: TEXT
+          description: 'Validates that every file referenced in {$CERTFILES} exists, is readable, and has integer warning/high day thresholds. Returns "OK" or "PROBLEMS: ..." with details.'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 12h
+          tags:
+            - tag: component
+              value: certificate
+            - tag: scope
+              value: configuration
+          triggers:
+            - uuid: c72b953c9547428cbd3cf07fd6b5e8a0
+              expression: 'last(/Certificate Expiry by Zabbix agent/certfile.filecheck[{$CERTFILES}])<>"OK"'
+              name: 'Certificate files configuration problem on {HOST.NAME}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: AVERAGE
+              description: 'One or more files in {$CERTFILES} are missing, unreadable, or misconfigured. Certificates in the affected file(s) are not being monitored until this is fixed.'
+              tags:
+                - tag: component
+                  value: certificate
+                - tag: scope
+                  value: configuration
+      discovery_rules:
+        - uuid: 5f669026d977405dafbe190bab95ccb7
+          name: 'Certificate files discovery'
+          key: 'certfile.discovery[{$CERTFILES}]'
+          delay: 1h
+          description: 'Discovers every certificate found in the files listed in {$CERTFILES}, identified by Common Name (CN) rather than the full subject — the full subject can contain characters (e.g. "@" in emailAddress) that Zabbix''s UserParameter mechanism rejects.'
+          item_prototypes:
+            - uuid: 2b96f437d46e4d57af5bf1f233010061
+              name: 'Certificate expiry: CN={#CERTCN} ({#CERTFILE})'
+              key: 'certfile.expiry["{#CERTFILE}","{#CERTCN}"]'
+              delay: 1h
+              value_type: FLOAT
+              units: '!d'
+              description: 'Number of days remaining until the certificate with CN "{#CERTCN}" in {#CERTFILE} expires. Negative value = already expired.'
+              tags:
+                - tag: component
+                  value: certificate
+                - tag: file
+                  value: '{#CERTFILE}'
+              trigger_prototypes:
+                - uuid: 90e5d1917dd449ad9b4deeee31318f06
+                  expression: 'last(/Certificate Expiry by Zabbix agent/certfile.expiry["{#CERTFILE}","{#CERTCN}"])<{#HIGHDAYS}'
+                  name: 'Certificate {#CERTCN} ({#CERTFILE}) expires in less than {#HIGHDAYS} days on {HOST.NAME}'
+                  priority: HIGH
+                  description: 'Certificate expires very soon or has already expired. Renew immediately to avoid RADIUS/RadSec TLS failures.'
+                  tags:
+                    - tag: component
+                      value: certificate
+                    - tag: file
+                      value: '{#CERTFILE}'
+                - uuid: 127d5a87fb3b492296022930793c4644
+                  expression: 'last(/Certificate Expiry by Zabbix agent/certfile.expiry["{#CERTFILE}","{#CERTCN}"])<{#WARNDAYS}'
+                  name: 'Certificate {#CERTCN} ({#CERTFILE}) expires in less than {#WARNDAYS} days on {HOST.NAME}'
+                  priority: WARNING
+                  description: 'Certificate is approaching its expiry date. Plan renewal.'
+                  manual_close: 'YES'
+                  dependencies:
+                    - name: 'Certificate {#CERTCN} ({#CERTFILE}) expires in less than {#HIGHDAYS} days on {HOST.NAME}'
+                      expression: 'last(/Certificate Expiry by Zabbix agent/certfile.expiry["{#CERTFILE}","{#CERTCN}"])<{#HIGHDAYS}'
+                  tags:
+                    - tag: component
+                      value: certificate
+                    - tag: file
+                      value: '{#CERTFILE}'
+      tags:
+        - tag: class
+          value: security
+      macros:
+        - macro: '{$CERTFILES}'
+          value: '/etc/freeradius/certs/radius.crt:30:7,/etc/freeradius/certs/radsecproxy-bundle.pem:60:10'
+          description: 'Comma-separated list of certificate files to monitor. Format: path:warning_days:high_days. File paths must not contain a comma.'
