@@ -30,7 +30,7 @@ zabbix_export:
               4. Adjust {$SSLSCAN.CERT.EXPIRATION.WARN} if needed (default: 7 days)
       vendor:
         name: lpavlicek
-        version: 7.4.6
+        version: 7.4-7
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -97,7 +97,7 @@ zabbix_export:
             - 7 triggers (security warnings and certificate expiration alerts)
             
             Discovery process:
-                  1. Reads {$SSLSCAN.TARGETS} macro (comma-separated host:port list)
+                  1. Reads {$SSLSCAN.TARGETS} macro (comma-separated list of host:port, or just host - port defaults to 443)
                   2. Reads {$SSLSCAN.STARTTLS} macro (optional StartTLS parameters)
                   3. Creates {#TARGET} and {#STARTTLS} macros for each endpoint
                   4. Generates monitoring items using these macros
@@ -614,11 +614,18 @@ zabbix_export:
                     
                 Command executed:
                 sslscan --xml=- --timeout=2 --connect-timeout=2 --no-renegotiation --no-heartbleed --no-groups --no-compression --no-ciphersuites --tlsall --no-cipher-details {#STARTTLS} {#TARGET}
+                
+                Note: the wrapper script validates its own arguments before calling sslscan.
+                If {#TARGET} has no ":port" suffix, port 443 is used by default.
+                On validation failure it still prints a minimal valid XML document with an
+                <error> node and exits 0, so this item stays supported and the error message
+                propagates to the "SSL Scan Error" dependent item and its trigger, instead of
+                the item becoming "Not supported" (which would freeze all dependent items).
               preprocessing:
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
-              timeout: 6s
+              timeout: 10s
               tags:
                 - tag: component
                   value: sslscan
@@ -711,7 +718,7 @@ zabbix_export:
         - macro: '{$SSLSCAN.STARTTLS}'
           description: 'Optional comma-separated list of starttls parameters corresponding to targets (e.g., ,--starttls-psql,--starttls-smtp). Empty value for standard HTTPS.'
         - macro: '{$SSLSCAN.TARGETS}'
-          description: 'Comma-separated list of targets in format host:port (e.g., www.example.cz:443,db.example.cz:5432)'
+          description: 'Comma-separated list of targets in format host:port, or just host (port defaults to 443) (e.g., www.example.cz,db.example.cz:5432)'
       valuemaps:
         - uuid: 9cdd67faa1c3412ea3281c64d952fd1b
           name: overall.severity

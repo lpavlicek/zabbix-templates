@@ -111,6 +111,7 @@ V záložce **Macros** na úrovni hostu nastavte:
 www.example.cz:443,api.example.cz:443,mail.example.cz:25
 ```
 - Čárkami oddělený seznam cílů ve formátu `hostname:port`
+- Port je od verze 7.4-7 volitelný – pokud ho neuvedete (jen `hostname`), použije se automaticky **port 443**
 - Každý cíl vytvoří samostatnou sadu monitorovacích položek
 
 #### Volitelná makra
@@ -271,6 +272,8 @@ which sslscan
 ```
 3. Ověřte XML strukturu výstupu
 
+> **Poznámka:** Chyby ve formátu makra `{$SSLSCAN.TARGETS}` (např. neplatný znak v hostname) se od verze 7.4-7 nezobrazují jako "Not supported", ale jako standardní hodnota položky **TLS sslscan Error for {#TARGET}** a odpovídající trigger "SSL Scan error". Pokud tedy vidíte "Not supported", jde o jiný problém (chybějící/nespustitelný script, chybějící sslscan apod.), ne o špatně zadaný cíl. Cíl bez portu (např. jen `www.example.cz`) navíc od verze 7.4-7 není chyba – automaticky se použije port 443.
+
 ### Problém: "Could not resolve hostname"
 
 **Řešení:**
@@ -292,7 +295,16 @@ which sslscan
 
 ## 📝 Changelog
 
-### Verze 7.4.6 (2026-07-21)
+### Verze 7.4-7 (2026-07-21)
+
+**Změny z 21. 7. 2026:**
+- 🐛 Oprava chování skriptu při chybě validace vstupu (např. neplatný znak v cíli): dříve skript psal chybu na stderr a končil nenulovým exit kódem, což způsobilo, že master položka přešla do stavu "Not supported" a chybová zpráva se k triggeru vůbec nedostala (trigger zůstal na staré, zavádějící hodnotě). Nyní skript i v těchto případech vrací validní XML s `<error>` na stdout a exit 0, takže zpráva správně doteče přes položku "SSL Scan Error" až k triggeru
+- ✨ Cíl v makru `{$SSLSCAN.TARGETS}` už nemusí obsahovat port – pokud chybí (např. jen `www.example.cz`), skript automaticky použije port 443
+- 🏷️ Prodloužen timeout pro odpověď ze skriptu ze 6s na 10s
+
+### Verze 7.4-6 (2026-07-20)
+
+**Změny z 20. 7. 2026:**
 - 🔒 Zpevnění external scriptu `sslscan_check.sh` – validace formátu cíle (`host:port`) a allow-list pro StartTLS parametr, ochrana proti argument injection do sslscanu
 - 🐛 Oprava chyby v JavaScript preprocessingu položky "Certificate Days Until Expiration" (špatně pojmenovaná proměnná způsobovala, že se sentinel pro chybějící datum nikdy nevrátil)
 - 🌐 Překlad zbývajících českých komentářů v JavaScript preprocessingu do angličtiny
