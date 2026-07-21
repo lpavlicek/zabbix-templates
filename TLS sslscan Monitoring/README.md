@@ -292,6 +292,14 @@ which sslscan
 
 ## 📝 Changelog
 
+### Verze 7.4.6 (2026-07-21)
+- 🔒 Zpevnění external scriptu `sslscan_check.sh` – validace formátu cíle (`host:port`) a allow-list pro StartTLS parametr, ochrana proti argument injection do sslscanu
+- 🐛 Oprava chyby v JavaScript preprocessingu položky "Certificate Days Until Expiration" (špatně pojmenovaná proměnná způsobovala, že se sentinel pro chybějící datum nikdy nevrátil)
+- 🌐 Překlad zbývajících českých komentářů v JavaScript preprocessingu do angličtiny
+- 🔗 Doplněny závislosti (dependencies) triggerů "TLS 1.0/1.1 enabled", "Self-signed certificate" a "Weak cryptographic key" na trigger "SSL Scan error", aby se při selhání skenu nezobrazovaly zavádějící souběžné alerty
+- 🏷️ Trigger "Certificate expiring soon" nyní v názvu zobrazuje neměnné datum expirace certifikátu; počet zbývajících dnů je nově v poli Operational data
+- ✏️ Opravy drobných překlepů v popisech položek a nesoulad příkazu `--connect-timeout` vs. dříve chybně uvedený `--connection-timeout`
+
 ### Verze 7.4-1 (2025-11-09)
 - ✨ Iniciální release
 - ✅ Podpora Zabbix 7.4

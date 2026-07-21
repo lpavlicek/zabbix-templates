@@ -30,7 +30,7 @@ zabbix_export:
               4. Adjust {$SSLSCAN.CERT.EXPIRATION.WARN} if needed (default: 7 days)
       vendor:
         name: lpavlicek
-        version: 7.4-5
+        version: 7.4.6
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -130,18 +130,17 @@ zabbix_export:
                   parameters:
                     - |
                       // Parse date format: "Dec 13 03:48:41 2025 GMT"
-                        var s = value.trim();
+                      var s = value.trim();
                       var _output_ = 9999;
                       if (!s) {
-                        // no date found -> return empty or a sentinel
-                        // vracíme large positive (nebude vyhodnoceno) nebo NaN -> raději prázdný
-                        _output = 9998;
+                        // no date found in the XML -> return sentinel value
+                        _output_ = 9998;
                       } else {
-                        // vstup formát: "Dec 13 03:48:41 2025 GMT"
-                        // rozdělíme a převedeme na Date objekt v UTC
+                        // Input format: "Dec 13 03:48:41 2025 GMT"
+                        // Split it and build a UTC Date object
                         var parts = s.split(/\s+/);
-                        // možné formáty: [Mon] [DD] [HH:MM:SS] [YYYY] [GMT]
-                        // Např: ["Dec","13","03:48:41","2025","GMT"]
+                        // Expected layout: [Mon] [DD] [HH:MM:SS] [YYYY] [GMT]
+                        // e.g. ["Dec","13","03:48:41","2025","GMT"]
                         if (parts.length < 4) {
                           _output_ = 9997;
                         } else {
@@ -160,7 +159,7 @@ zabbix_export:
                             var ts_ms = Date.UTC(year, m, day, hour, minute, second);
                             var now_ms = Date.now();
                             var diff_days = (ts_ms - now_ms) / (1000*60*60*24);
-                            // pokud chceme includovat dnešní den jako 0/1, uprav podle potřeby
+                            // adjust rounding here if today should count as 0/1 instead
                             _output_ = Number(diff_days.toFixed(1));
                           }
                         }
@@ -396,6 +395,10 @@ zabbix_export:
                   name: 'Self-signed certificate detected on {#TARGET}'
                   priority: WARNING
                   description: 'The certificate on {#TARGET} is self-signed and not issued by a trusted Certificate Authority.'
+                  dependencies:
+                    - name: 'SSL Scan error for {#TARGET}: {ITEM.LASTVALUE1}'
+                      expression: 'length(last(/TLS sslscan Monitoring/sslscan.error[{#TARGET}]))>0'
+                      recovery_expression: 'length(last(/TLS sslscan Monitoring/sslscan.error[{#TARGET}]))=0'
                   tags:
                     - tag: component
                       value: sslscan
@@ -492,6 +495,10 @@ zabbix_export:
                   priority: WARNING
                   description: 'TLS 1.0 protocol is enabled on {#TARGET}. This is considered insecure and should be disabled.'
                   manual_close: 'YES'
+                  dependencies:
+                    - name: 'SSL Scan error for {#TARGET}: {ITEM.LASTVALUE1}'
+                      expression: 'length(last(/TLS sslscan Monitoring/sslscan.error[{#TARGET}]))>0'
+                      recovery_expression: 'length(last(/TLS sslscan Monitoring/sslscan.error[{#TARGET}]))=0'
                   tags:
                     - tag: component
                       value: sslscan
@@ -532,6 +539,10 @@ zabbix_export:
                   priority: WARNING
                   description: 'TLS 1.1 protocol is enabled on {#TARGET}. This is considered insecure and should be disabled.'
                   manual_close: 'YES'
+                  dependencies:
+                    - name: 'SSL Scan error for {#TARGET}: {ITEM.LASTVALUE1}'
+                      expression: 'length(last(/TLS sslscan Monitoring/sslscan.error[{#TARGET}]))>0'
+                      recovery_expression: 'length(last(/TLS sslscan Monitoring/sslscan.error[{#TARGET}]))=0'
                   tags:
                     - tag: component
                       value: sslscan
@@ -540,7 +551,7 @@ zabbix_export:
               type: DEPENDENT
               key: 'sslscan.tls12.enabled[{#TARGET}]'
               description: |
-                ndicates whether TLS 1.2 protocol is enabled on {#TARGET}.
+                Indicates whether TLS 1.2 protocol is enabled on {#TARGET}.
                 
                 Value mapping:
                 - 1 = TLS 1.2 is enabled (secure, widely supported)
@@ -602,7 +613,7 @@ zabbix_export:
                 This item serves as the data source for all dependent SSL/TLS monitoring items.
                     
                 Command executed:
-                sslscan --xml=- --timeout=2 --connection-timeout=2 --no-renegotiation --no-heartbleed --no-groups --no-compression --no-ciphersuites --tlsall --no-cipher-details {#STARTTLS} {#TARGET}
+                sslscan --xml=- --timeout=2 --connect-timeout=2 --no-renegotiation --no-heartbleed --no-groups --no-compression --no-ciphersuites --tlsall --no-cipher-details {#STARTTLS} {#TARGET}
               preprocessing:
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
@@ -611,6 +622,8 @@ zabbix_export:
               tags:
                 - tag: component
                   value: sslscan
+                - tag: stage
+                  value: raw
           trigger_prototypes:
             - uuid: 890bb6fe3c03435b9d38b4c222d5d928
               expression: |
@@ -618,7 +631,8 @@ zabbix_export:
                 and length(last(/TLS sslscan Monitoring/sslscan.cert.expiration[{#TARGET}]))>0
               recovery_mode: RECOVERY_EXPRESSION
               recovery_expression: 'last(/TLS sslscan Monitoring/sslscan.cert.daysuntilexpiration[{#TARGET}])>{$SSLSCAN.CERT.EXPIRATION.WARN}'
-              name: 'Certificate on {#TARGET} expires in {ITEM.LASTVALUE1} days'
+              name: 'Certificate on {#TARGET} expires on {ITEM.LASTVALUE3}'
+              opdata: '{ITEM.LASTVALUE1} days remaining'
               priority: AVERAGE
               description: |
                 The certificate on {#TARGET} will expire in {ITEM.LASTVALUE1} days.
@@ -660,6 +674,10 @@ zabbix_export:
                 • EC keys (any standard curve: prime256v1, secp384r1)
                 • RSA keys: 3072 bits or 4096 bits
               manual_close: 'YES'
+              dependencies:
+                - name: 'SSL Scan error for {#TARGET}: {ITEM.LASTVALUE1}'
+                  expression: 'length(last(/TLS sslscan Monitoring/sslscan.error[{#TARGET}]))>0'
+                  recovery_expression: 'length(last(/TLS sslscan Monitoring/sslscan.error[{#TARGET}]))=0'
               tags:
                 - tag: component
                   value: sslscan
