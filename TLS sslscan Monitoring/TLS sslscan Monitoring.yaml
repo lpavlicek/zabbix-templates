@@ -30,7 +30,7 @@ zabbix_export:
               4. Adjust {$SSLSCAN.CERT.EXPIRATION.WARN} if needed (default: 7 days)
       vendor:
         name: lpavlicek
-        version: 7.4-7
+        version: 7.4-8
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -175,6 +175,20 @@ zabbix_export:
                   expression: 'between(last(/TLS sslscan Monitoring/sslscan.cert.daysuntilexpiration[{#TARGET}]),9990,9998)=1'
                   name: 'Error in parsing expiration date for {#TARGET}'
                   priority: WARNING
+                  description: |
+                    The test response does not contain a parseable expiry date. The most common reasons are:
+                    - TLS is not configured on the destination port
+                    - communication is blocked (by a firewall)
+                    - the service is not running
+                    - the server returned an unexpected date format
+                    This trigger clears automatically once a valid expiration date is read again.
+                  dependencies:
+                    - name: 'SSL Scan error for {#TARGET}: {ITEM.LASTVALUE1}'
+                      expression: 'length(last(/TLS sslscan Monitoring/sslscan.error[{#TARGET}]))>0'
+                      recovery_expression: 'length(last(/TLS sslscan Monitoring/sslscan.error[{#TARGET}]))=0'
+                  tags:
+                    - tag: component
+                      value: sslscan
             - uuid: 1dfc04e7fd9b4d46bbe85c6168355e1e
               name: 'TLS sslscan Certificate EC Curve for {#TARGET}'
               type: DEPENDENT
@@ -257,9 +271,12 @@ zabbix_export:
                   expression: 'last(/TLS sslscan Monitoring/sslscan.cert.expired[{#TARGET}])=1'
                   recovery_mode: RECOVERY_EXPRESSION
                   recovery_expression: 'last(/TLS sslscan Monitoring/sslscan.cert.expired[{#TARGET}])=0'
-                  name: 'Certificate expired on {#TARGET}'
+                  name: 'Certificate has expired on {#TARGET}'
                   priority: HIGH
-                  description: 'The certificate on {#TARGET} has expired and is no longer valid.'
+                  description: |
+                    The certificate on {#TARGET} has passed its expiration date and is no longer valid.
+                    Browsers and TLS clients will reject the connection or show a security warning, effectively causing an outage for this service.
+                    Action required: renew and deploy a new certificate as soon as possible.
                   tags:
                     - tag: component
                       value: sslscan
@@ -354,7 +371,10 @@ zabbix_export:
                   recovery_expression: 'last(/TLS sslscan Monitoring/sslscan.cert.notyetvalid[{#TARGET}])=0'
                   name: 'Certificate not yet valid on {#TARGET}'
                   priority: HIGH
-                  description: 'The certificate on {#TARGET} is not yet valid. The validity period has not started yet.'
+                  description: |
+                    The certificate on {#TARGET} has a validity period that has not started yet ("Not Valid Before" is in the future).
+                    Clients will reject the connection until that date is reached. This usually indicates a clock/timezone
+                    problem on the server, a certificate that was issued but deployed too early, or a misconfigured renewal job.
                   tags:
                     - tag: component
                       value: sslscan
@@ -394,7 +414,10 @@ zabbix_export:
                   recovery_expression: 'last(/TLS sslscan Monitoring/sslscan.cert.selfsigned[{#TARGET}])=0'
                   name: 'Self-signed certificate detected on {#TARGET}'
                   priority: WARNING
-                  description: 'The certificate on {#TARGET} is self-signed and not issued by a trusted Certificate Authority.'
+                  description: |
+                    The certificate on {#TARGET} is self-signed and not issued by a trusted Certificate Authority.
+                    Clients will show a trust warning or refuse the connection. Acceptable for internal/testing endpoints only -
+                    production services should use a certificate from a trusted CA (e.g. Let's Encrypt, internal PKI).
                   dependencies:
                     - name: 'SSL Scan error for {#TARGET}: {ITEM.LASTVALUE1}'
                       expression: 'length(last(/TLS sslscan Monitoring/sslscan.error[{#TARGET}]))>0'
@@ -447,8 +470,19 @@ zabbix_export:
               params: 'max(last(//sslscan.cert.selfsigned[{#TARGET}])*2, last(//sslscan.cert.notyetvalid[{#TARGET}])*2, last(//sslscan.cert.expired[{#TARGET}])*4, last(//sslscan.tls10.enabled[{#TARGET}])*2, last(//sslscan.tls11.enabled[{#TARGET}])*2, (last(//sslscan.cert.daysuntilexpiration[{#TARGET}]) < {$SSLSCAN.CERT.EXPIRATION.WARN})*2, (length(last(//sslscan.error[{#TARGET}]))>0)*4, (last(//sslscan.cert.keytype[{#TARGET}])="RSA" and last(//sslscan.cert.keybits[{#TARGET}])=2048)*1, 0)'
               description: |
                 Calculated overall severity level for SSL/TLS configuration on {#TARGET}.
-                
-                This item aggregates all security issues detected on the target and returns the highest severity level found.
+
+                This item aggregates all security issues detected on the target and returns the HIGHEST severity level found,
+                using the same 0-5 scale as the "overall.severity" value map. It is computed as a weighted maximum of these checks:
+                - Self-signed certificate: weight 2
+                - Certificate not yet valid: weight 2
+                - Certificate expired: weight 4
+                - TLS 1.0 enabled: weight 2
+                - TLS 1.1 enabled: weight 2
+                - Certificate expiring within {$SSLSCAN.CERT.EXPIRATION.WARN} days: weight 2
+                - SSL scan error (target unreachable/misconfigured): weight 4
+                - RSA key exactly 2048 bits: weight 1
+
+                Feeds into the template-level "TLS sslscan Overall Severity" item, which takes the maximum across all targets.
               valuemap:
                 name: overall.severity
               preprocessing:
@@ -493,7 +527,9 @@ zabbix_export:
                   recovery_expression: 'last(/TLS sslscan Monitoring/sslscan.tls10.enabled[{#TARGET}])=0'
                   name: 'TLS 1.0 is enabled on {#TARGET}'
                   priority: WARNING
-                  description: 'TLS 1.0 protocol is enabled on {#TARGET}. This is considered insecure and should be disabled.'
+                  description: |
+                    TLS 1.0 protocol is enabled on {#TARGET}. This protocol was deprecated in 2021 (RFC 8996) and is considered
+                    insecure. Disable it in the service's TLS configuration and keep only TLS 1.2/1.3.
                   manual_close: 'YES'
                   dependencies:
                     - name: 'SSL Scan error for {#TARGET}: {ITEM.LASTVALUE1}'
@@ -537,7 +573,9 @@ zabbix_export:
                   recovery_expression: 'last(/TLS sslscan Monitoring/sslscan.tls11.enabled[{#TARGET}])=0'
                   name: 'TLS 1.1 is enabled on {#TARGET}'
                   priority: WARNING
-                  description: 'TLS 1.1 protocol is enabled on {#TARGET}. This is considered insecure and should be disabled.'
+                  description: |
+                    TLS 1.1 protocol is enabled on {#TARGET}. This protocol was deprecated in 2021 (RFC 8996) and is considered
+                    insecure. Disable it in the service's TLS configuration and keep only TLS 1.2/1.3.
                   manual_close: 'YES'
                   dependencies:
                     - name: 'SSL Scan error for {#TARGET}: {ITEM.LASTVALUE1}'
@@ -647,7 +685,7 @@ zabbix_export:
                 Action required:
                  - Renew the certificate before {ITEM.LASTVALUE3}.
               dependencies:
-                - name: 'Certificate expired on {#TARGET}'
+                - name: 'Certificate has expired on {#TARGET}'
                   expression: 'last(/TLS sslscan Monitoring/sslscan.cert.expired[{#TARGET}])=1'
                   recovery_expression: 'last(/TLS sslscan Monitoring/sslscan.cert.expired[{#TARGET}])=0'
               tags:

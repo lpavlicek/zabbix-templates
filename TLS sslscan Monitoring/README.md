@@ -295,6 +295,18 @@ which sslscan
 
 ## 📝 Changelog
 
+### Verze 7.4-8 (2026-07-25)
+
+**Změny přenesené z ručních úprav na serveru:**
+- 🔗 Trigger "Error in parsing expiration date for {#TARGET}" nyní má description a závislost na "SSL Scan error" (dříve chybělo)
+- 🏷️ Trigger "Certificate expired on {#TARGET}" přejmenován na "Certificate has expired on {#TARGET}" (gramaticky přesnější znění), včetně odpovídající aktualizace závislosti u triggeru "Certificate expiring soon"
+
+**Kontrola a doplnění descriptions u items/triggers:**
+- 🐛 Doplněn chybějící tag `component: sslscan` u triggeru "Error in parsing expiration date" (byl opomenut při ručním doplnění na serveru)
+- ✏️ Opraven přebytečný čárkový výčet v description téhož triggeru
+- 📝 Rozšířeny příliš stručné descriptions u triggerů "Certificate has expired", "Certificate not yet valid", "Self-signed certificate detected", "TLS 1.0/1.1 is enabled" – nově obsahují dopad problému a doporučenou akci, konzistentně s ostatními triggery v šabloně
+- 📝 Doplněn popis váhového vzorce u položky "TLS sslscan Target Severity for {#TARGET}" (dosud nebylo dokumentováno, jak se skládá výsledná závažnost)
+
 ### Verze 7.4-7 (2026-07-21)
 
 **Změny z 21. 7. 2026:**
