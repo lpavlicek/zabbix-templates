@@ -2,20 +2,28 @@
 # =============================================================================
 # zabbix_ollama.sh - Zabbix UserParameter wrapper for Ollama monitoring
 # =============================================================================
-# Version: 1.1
-# Usage:   zabbix_ollama.sh <action> [port] [model] [keep_alive]
+# Version: 1.2
+# Usage:   zabbix_ollama.sh <action> [port] [model] [keep_alive] [num_ctx]
 #
 # Actions:
 #   version      - Get Ollama version (JSON)
 #   models       - List available models (JSON)
 #   loaded       - List loaded models (JSON)
 #   probe        - Run inference probe and return response (JSON)
+#                  num_ctx sets the requested context window size in tokens
+#                  (options.num_ctx in the API payload).
 #
 # Examples:
 #   zabbix_ollama.sh version 11434
 #   zabbix_ollama.sh models  11434
 #   zabbix_ollama.sh loaded  11434
-#   zabbix_ollama.sh probe   11434 gemma3:270m 30m
+#   zabbix_ollama.sh probe   11434 gemma3:270m 30m 8192
+#
+# Timeouts:
+#   The probe action performs a real inference call and, with a large num_ctx,
+#   can take considerably longer than the lightweight metadata calls (version/
+#   models/loaded). It therefore uses its own, longer curl timeout
+#   (CURL_TIMEOUT_PROBE) - see the Configuration section below.
 #
 # HTTP error handling:
 #   On non-200 responses the script returns a JSON object, e.g.:
@@ -32,8 +40,10 @@
 # =============================================================================
 
 # --- Configuration ---
-readonly CURL_TIMEOUT=3           # max seconds for curl (connect + transfer)
-readonly CURL_CONNECT_TIMEOUT=2   # max seconds for TCP connect
+readonly CURL_CONNECT_TIMEOUT=2      # max seconds for TCP connect (all actions)
+readonly CURL_TIMEOUT_DEFAULT=3      # max seconds for curl (connect+transfer) - version/models/loaded
+readonly CURL_TIMEOUT_PROBE=18       # max seconds for curl (connect+transfer) - probe (real inference call;
+                                      # can be slow on CPU-only hosts, especially with a large num_ctx)
 readonly OLLAMA_HOST="localhost"
 
 # --- Input validation ---
@@ -74,6 +84,29 @@ KEEP_ALIVE="${4:-30m}"
 if ! [[ "${KEEP_ALIVE}" =~ ^(-1|[0-9]+(s|m|h)?)$ ]]; then
     echo '{"error":"invalid_keep_alive"}'
     exit 1
+fi
+
+# Context window size (only needed for probe): digits only, sane range.
+# Passed to Ollama as options.num_ctx (tokens). Upper bound is a sanity guard,
+# not a real Ollama limit.
+NUM_CTX="${5:-}"
+if [[ "${ACTION}" == "probe" ]]; then
+    if [[ -z "${NUM_CTX}" ]]; then
+        echo '{"error":"missing_num_ctx"}'
+        exit 1
+    fi
+    if ! [[ "${NUM_CTX}" =~ ^[0-9]+$ ]] || (( NUM_CTX < 1 || NUM_CTX > 1048576 )); then
+        echo '{"error":"invalid_num_ctx"}'
+        exit 1
+    fi
+fi
+
+# Select the curl timeout for this action (probe gets a longer budget - see
+# "Timeouts" note at the top of this script).
+if [[ "${ACTION}" == "probe" ]]; then
+    CURL_TIMEOUT="${CURL_TIMEOUT_PROBE}"
+else
+    CURL_TIMEOUT="${CURL_TIMEOUT_DEFAULT}"
 fi
 
 # --- Build base URL ---
@@ -118,8 +151,8 @@ case "${ACTION}" in
         ;;
 
     probe)
-        PAYLOAD=$(printf '{"model":"%s","prompt":"1+1","stream":false,"keep_alive":"%s"}' \
-                  "${MODEL}" "${KEEP_ALIVE}")
+        PAYLOAD=$(printf '{"model":"%s","prompt":"1+1","stream":false,"keep_alive":"%s","options":{"num_ctx":%s}}' \
+                  "${MODEL}" "${KEEP_ALIVE}" "${NUM_CTX}")
         HTTP_STATUS=$(curl "${CURL_OPTS[@]}" \
                            --request POST \
                            --data   "${PAYLOAD}" \

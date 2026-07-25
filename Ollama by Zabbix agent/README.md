@@ -60,7 +60,7 @@ Verify the UserParameters are recognised:
 zabbix_agentd -t 'ollama.version.get[11434]'
 zabbix_agentd -t 'ollama.models.available.get[11434]'
 zabbix_agentd -t 'ollama.models.loaded.get[11434]'
-zabbix_agentd -t 'ollama.probe.get[11434,gemma3:270m,0]'
+zabbix_agentd -t 'ollama.probe.get[11434,gemma3:270m,0,8192]'
 ```
 
 Each command should return a JSON object. If Ollama is not running, the script returns `{"error":"curl_failed","curl_exit_code":7}`.
@@ -117,6 +117,7 @@ All template parameters are stored as user macros. They can be overridden at the
 | `{$OLLAMA.PORT}` | `11434` | TCP port the Ollama API listens on. |
 | `{$OLLAMA.PROBE.MODEL}` | `gemma3:270m` | Model used for the inference probe. Must be pulled on every monitored host. Use a small, fast model. |
 | `{$OLLAMA.PROBE.KEEP_ALIVE}` | `30m` | How long to keep the probe model loaded in VRAM after the test. `0` = unload immediately, `-1` = keep permanently, `30m` = 30 minutes. |
+| `{$OLLAMA.PROBE.NUM_CTX}` | `8192` | Context window size, in tokens, requested for the probe (`options.num_ctx`). Larger values increase VRAM usage and probe duration, especially on CPU-only hosts. Set it close to what real client traffic uses on this host so the probe timings stay representative (see [Tuning](#tuning)). |
 | `{$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN}` | `1` | Warning threshold for probe `total_duration` in seconds. Adjust to match the expected inference speed on the given hardware (see [Tuning](#tuning)). |
 | `{$OLLAMA.LOG_FILE}` | `/var/log/daemon.log` | Path to the log file containing Ollama journal entries. Change if your rsyslog configuration writes daemon-facility logs elsewhere. |
 | `{$OLLAMA.LOG.CHECK_INTERVAL}` | `2m` | Polling interval for log-based items. Shorter intervals reduce detection latency; increase on hosts with high log volume. |
@@ -150,20 +151,21 @@ All template parameters are stored as user macros. They can be overridden at the
 
 | Item | Key | Interval | Description |
 |---|---|---|---|
-| Ollama: Get probe response | `ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE}]` | 10m | Master item. Sends `POST /api/generate` with prompt `"1+1"`. Verifies end-to-end inference capability. History not stored. |
+| Ollama: Get probe response | `ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE},{$OLLAMA.PROBE.NUM_CTX}]` | 10m | Master item. Sends `POST /api/generate` with prompt `"1+1"` and `options.num_ctx = {$OLLAMA.PROBE.NUM_CTX}`. Verifies end-to-end inference capability. History not stored. |
 | Ollama: Probe response error | `ollama.probe.error` | dependent | Error string extracted from the probe response. Empty on success. |
 | Ollama: Probe response - no response (timeout/empty) | `ollama.probe.no_response` | dependent | Returns 1 when the probe received no usable response (transport error or empty body). |
 | Ollama: Probe load_duration | `ollama.probe.load_duration` | dependent | Time spent loading the model for the probe, in seconds. Zero if the model was already in VRAM. |
 | Ollama: Probe total_duration | `ollama.probe.total_duration` | dependent | Total wall-clock time for the probe request, in seconds. |
 
-### Log monitoring – GPU errors
+### Log monitoring
 
 | Item | Key | Interval | Description |
 |---|---|---|---|
 | Ollama: Log - GPU VRAM recovery failures | `log[{$OLLAMA.LOG_FILE},"ollama.*gpu VRAM usage didn't recover within timeout",,,skip]` | `{$OLLAMA.LOG.CHECK_INTERVAL}` | Detects VRAM not released after model unload. Repeated occurrences indicate a GPU scheduler problem that causes Ollama to silently fall back to CPU inference. |
-| Ollama: Log - GPU discovery failures | `log[{$OLLAMA.LOG_FILE},"ollama.*failure during GPU discovery",,,skip]` | `{$OLLAMA.LOG.CHECK_INTERVAL}` | Detects GPU enumeration failure during model runner startup. Ollama silently falls back to CPU — the service appears healthy but performance is severely degraded. |
+| Ollama: Log - GPU discovery failures | `log[{$OLLAMA.LOG_FILE},"ollama.*level=.*(GPU discovery watchdog timed out\|failure during GPU discovery)",,,skip]` | `{$OLLAMA.LOG.CHECK_INTERVAL}` | Detects GPU enumeration failure during model runner startup (either message variant). Ollama silently falls back to CPU — the service appears healthy but performance is severely degraded. Lines also containing `context deadline exceeded` are discarded (observed benign watchdog timeout during slow GPU startup). |
+| Ollama: Log - llama-server process has terminated | `log[{$OLLAMA.LOG_FILE},"ollama.*llama-server process has terminated",,,skip]` | `{$OLLAMA.LOG.CHECK_INTERVAL}` | Detects the inference runner subprocess dying unexpectedly while a model was loaded (most commonly a CUDA/ROCm out-of-memory kill). Ollama spawns a fresh runner on the next request, so this is not a full outage, but in-flight requests fail and frequent occurrences point to a VRAM/driver problem. |
 
-Both items use `skip` mode: only log lines written since the last check are evaluated. The Zabbix agent must have read access to `{$OLLAMA.LOG_FILE}` (see [Setup step 4](#4-grant-log-file-access-to-the-zabbix-agent)).
+All three items use `skip` mode: only log lines written since the last check are evaluated. The Zabbix agent must have read access to `{$OLLAMA.LOG_FILE}` (see [Setup step 4](#4-grant-log-file-access-to-the-zabbix-agent)).
 
 ### Version
 
@@ -190,7 +192,8 @@ Both items use `skip` mode: only log lines written since the last check are eval
 | Ollama: Probe response - no response (timeout/empty) | High | Probe received no usable data at all (`curl_failed` or `empty_response`). Indicates the engine is unresponsive or overloaded. Requires manual close. Depends on the port trigger. |
 | Ollama: Probe total_duration exceeds {$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN} | Warning | Inference took longer than the configured threshold. Requires manual close. Depends on the port trigger. |
 | Ollama: GPU VRAM did not recover within timeout | Average | Log entry detected: VRAM not released after model unload. Ollama may fall back to CPU for subsequent models. Requires manual close. |
-| Ollama: GPU discovery failed - inference may be running on CPU | High | Log entry detected: GPU enumeration failed during runner startup. Service appears healthy but inference is running on CPU. Requires manual close. |
+| Ollama: GPU discovery failed - inference may be running on CPU | Average | Log entry detected: GPU enumeration failed during runner startup. Service appears healthy but inference is running on CPU. Requires manual close. |
+| Ollama: llama-server process has terminated | Average | Log entry detected: the inference runner subprocess exited unexpectedly, typically from a CUDA/ROCm out-of-memory kill. Requires manual close. |
 
 ### Trigger dependencies
 
@@ -219,16 +222,20 @@ The script `zabbix_ollama.sh` normalises all failure modes into a JSON object th
 | `invalid_model` | Internal: model argument contains disallowed characters. | — |
 | `invalid_keep_alive` | Internal: keep_alive argument failed validation. | — |
 | `missing_model` | Internal: probe called without a model argument. | — |
+| `invalid_num_ctx` | Internal: num_ctx argument is not a positive integer, or out of range. | — |
+| `missing_num_ctx` | Internal: probe called without a num_ctx argument. | — |
 
 ### Timeout values
 
-| Setting | Value | Location |
-|---|---|---|
-| curl connect timeout | 2 s | `zabbix_ollama.sh` |
-| curl max time (total) | 3 s | `zabbix_ollama.sh` |
-| Zabbix agent item timeout | 4 s | Item configuration in template |
+| Setting | Value | Applies to | Location |
+|---|---|---|---|
+| curl connect timeout | 2 s | all actions | `zabbix_ollama.sh` (`CURL_CONNECT_TIMEOUT`) |
+| curl max time (total) | 3 s | version / models / loaded | `zabbix_ollama.sh` (`CURL_TIMEOUT_DEFAULT`) |
+| curl max time (total) | 18 s | probe | `zabbix_ollama.sh` (`CURL_TIMEOUT_PROBE`) |
+| Zabbix agent item timeout | 4 s | version / models / loaded items | Item configuration in template |
+| Zabbix agent item timeout | 20 s | Ollama: Get probe response | Item configuration in template |
 
-The Zabbix agent timeout is intentionally set 1 second above the curl max time to allow the script to finish cleanly and return a structured error JSON rather than being killed mid-execution.
+The Zabbix agent item timeout is intentionally set ~2 seconds above the matching curl max time, so the script has a chance to finish cleanly and return a structured error JSON rather than being killed mid-execution. The `probe` action gets a much larger budget than the metadata-only actions because it performs a real inference call: duration scales with `{$OLLAMA.PROBE.NUM_CTX}` and, on CPU-only hosts, can take several seconds even for a tiny model. If you raise `{$OLLAMA.PROBE.NUM_CTX}` significantly and start seeing `curl_failed` (exit code 28) on the probe, increase both `CURL_TIMEOUT_PROBE` in the script and the item's `timeout` in the template together.
 
 ## Tuning
 
@@ -239,6 +246,12 @@ Use the smallest model available on all monitored hosts. Smaller models load fas
 Recommended options (in order of size): `smollm2:135m`, `gemma3:270m`, `qwen2.5:0.5b`.
 
 If different hosts run different hardware, set `{$OLLAMA.PROBE.MODEL}` and `{$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN}` as host-level macro overrides rather than changing the template default.
+
+### Context window size (num_ctx)
+
+`{$OLLAMA.PROBE.NUM_CTX}` sets `options.num_ctx` on the probe request — the context window, in tokens, that Ollama allocates a KV cache for. This is independent of the actual prompt (`"1+1"`), so it directly controls how much memory the probe reserves and, particularly on CPU-only hosts, how long `load_duration` and `total_duration` take.
+
+Set it to roughly what real client requests on that host use, rather than leaving the default everywhere: a probe run with a small `num_ctx` will look artificially fast and can mask a `total_duration` regression that only shows up under production-sized contexts. Since it changes probe timing, re-baseline `{$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN}` (below) whenever you change `{$OLLAMA.PROBE.NUM_CTX}` on a host.
 
 ### total_duration threshold
 
@@ -255,7 +268,7 @@ Run a few manual probes to establish a baseline before setting the threshold:
 
 ```bash
 for i in 1 2 3 4 5; do
-    /etc/zabbix/scripts/ollama/zabbix_ollama.sh probe 11434 gemma3:270m 0 \
+    /etc/zabbix/scripts/ollama/zabbix_ollama.sh probe 11434 gemma3:270m 0 8192 \
     | python3 -c "import sys,json; d=json.load(sys.stdin); print(round(d.get('total_duration',0)/1e9,3), 's')"
 done
 ```
@@ -286,3 +299,18 @@ The template includes a built-in dashboard named **Ollama** with the following w
 - Ollama 0.20.x on Ubuntu 22.04 and 24.04
 - Zabbix 7.4 with classic Zabbix agent 2
 - Models: gemma3:270m, llama3.2:3b, mistral:7b
+
+## Changelog
+
+### 7.4-4
+
+- Detekce chyby GPU discovery nyní pokrývá i variantu logu "GPU discovery watchdog timed out" (dříve zachytávala jen "failure during GPU discovery"); řádky obsahující zároveň "context deadline exceeded" se zahazují jako neškodné (pozorováno při pomalejším startu GPU).
+- Nový item + trigger `Ollama: Log - llama-server process has terminated` — detekuje neočekávané ukončení runner subprocesu (nejčastěji CUDA/ROCm out-of-memory).
+- Cesta k logu je nyní plně řízena makrem `{$OLLAMA.LOG_FILE}` (dříve částečně natvrdo v popisu itemů).
+- Probe nyní posílá i velikost kontextu (`options.num_ctx`) přes nové makro `{$OLLAMA.PROBE.NUM_CTX}` (výchozí `8192`). Klíč itemu `ollama.probe.get[]` má nově 4 parametry.
+- Timeouty ve wrapper skriptu rozděleny na výchozí (3 s, pro version/models/loaded) a delší pro probe (18 s) kvůli delší odezvě při větším `num_ctx`, zejména na CPU. Odpovídá tomu i timeout itemu `Ollama: Get probe response` (20 s).
+- Opraven nesoulad v README: trigger "GPU discovery failed" má severitu Average, ne High.
+
+### 7.4-3
+
+- První verze v aktuální podobě (service availability, model inventory, VRAM, inference probe, log monitoring GPU chyb, process metriky, dashboard).

@@ -36,43 +36,102 @@ zabbix_export:
         - {$OLLAMA.PROBE.KEEP_ALIVE}   - How long to keep the probe model loaded
                                          after the test (0 = unload immediately,
                                          -1 = keep permanently, 30m = default).
+        - {$OLLAMA.PROBE.NUM_CTX}      - Context window size (tokens) requested for
+                                         the probe (default: 8192). Larger values
+                                         increase probe duration and VRAM usage.
         - {$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN} - Warning threshold for probe
                                          total_duration in seconds (default: 1s).
+        - {$OLLAMA.LOG_FILE}           - Path to the log file with Ollama journal
+                                         entries (default: /var/log/daemon.log).
         
         ### Tested with
         Ollama >= 0.3, Zabbix 7.4, Ubuntu 22.04/24.04
       vendor:
         name: lpavlicek
-        version: 7.4-3
+        version: 7.4-4
       groups:
         - name: 'lpavlicek templates'
       items:
-        - uuid: 4011e51584854361b49f7d13a4fac290
-          name: 'Ollama: Log - GPU discovery failures'
+        - uuid: 699ed483b47c43a6b2bc0e28bf30a021
+          name: 'Ollama: Log - GPU VRAM recovery failures'
           type: ZABBIX_ACTIVE
-          key: 'log[/var/log/daemon.log,"ollama.*failure during GPU discovery",,,skip]'
+          key: 'log[{$OLLAMA.LOG_FILE},"ollama.*gpu VRAM usage didn''t recover within timeout",,,skip]'
           delay: '{$OLLAMA.LOG.CHECK_INTERVAL}'
           value_type: LOG
           description: |
-            Monitors /var/log/daemon.log for the message:
-              "failure during GPU discovery"
-            This message appears in runner.go when Ollama cannot enumerate GPUs during
-            model runner startup (e.g. CUDA/ROCm driver timeout, device permission issue).
-            Ollama silently falls back to CPU inference — the TCP port remains open,
-            the probe succeeds, but performance degrades severely and without this log
-            check there is no other signal in the current template.
+            Monitors {$OLLAMA.LOG_FILE} for the message:
+              "gpu VRAM usage didn't recover within timeout"
+            This warning appears in sched.go when VRAM is not released within the expected
+            time after a model is unloaded. Repeated occurrences indicate a GPU scheduler
+            problem that can cause Ollama to fall back to loading subsequent models on CPU
+            instead of GPU, or to refuse model loading entirely.
             The item uses "skip" mode — only new log lines since the last check are evaluated.
           tags:
             - tag: component
               value: gpu
           triggers:
+            - uuid: d2834e7526be4ad9a149e594dcc2f36d
+              expression: 'logseverity(/Ollama by Zabbix agent/log[{$OLLAMA.LOG_FILE},"ollama.*gpu VRAM usage didn''t recover within timeout",,,skip])>=0'
+              name: 'Ollama: GPU VRAM did not recover within timeout'
+              priority: AVERAGE
+              description: |
+                Ollama reported that GPU VRAM usage did not return to the expected level
+                after a model was unloaded (sched.go: "gpu VRAM usage didn't recover within timeout").
+                
+                Impact: Ollama may load the next model on CPU instead of GPU, causing
+                significantly slower inference. The condition does not self-resolve without
+                a restart of the ollama service.
+                
+                Recommended action:
+                  systemctl restart ollama
+                
+                If this trigger fires repeatedly, investigate GPU driver stability
+                (nvidia-smi, dmesg | grep -i nvidia).
+              manual_close: 'YES'
+              tags:
+                - tag: scope
+                  value: performance
+                - tag: target
+                  value: ollama
+        - uuid: 4011e51584854361b49f7d13a4fac290
+          name: 'Ollama: Log - GPU discovery failures'
+          type: ZABBIX_ACTIVE
+          key: 'log[{$OLLAMA.LOG_FILE},"ollama.*level=.*(GPU discovery watchdog timed out|failure during GPU discovery)",,,skip]'
+          delay: '{$OLLAMA.LOG.CHECK_INTERVAL}'
+          value_type: LOG
+          description: |
+            Monitors {$OLLAMA.LOG_FILE} for either message:
+              "failure during GPU discovery"
+              "GPU discovery watchdog timed out"
+            Both appear in runner.go when Ollama cannot enumerate GPUs during model
+            runner startup (e.g. CUDA/ROCm driver timeout, device permission issue).
+            Ollama silently falls back to CPU inference — the TCP port remains open,
+            the probe succeeds, but performance degrades severely and without this log
+            check there is no other signal in the current template.
+            Lines also containing "context deadline exceeded" are discarded by the
+            preprocessing step below, since this combination has been observed to be a
+            benign, self-resolving watchdog timeout during normal (slow) GPU startup.
+            The item uses "skip" mode — only new log lines since the last check are evaluated.
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  if (value.indexOf('context deadline exceeded') !== -1) {
+                      return null;
+                  }
+                  return value;
+          tags:
+            - tag: component
+              value: gpu
+          triggers:
             - uuid: f430c85645af490aac54bdb287e3b9ef
-              expression: 'logseverity(/Ollama by Zabbix agent/log[/var/log/daemon.log,"ollama.*failure during GPU discovery",,,skip])>=0'
+              expression: 'logseverity(/Ollama by Zabbix agent/log[{$OLLAMA.LOG_FILE},"ollama.*level=.*(GPU discovery watchdog timed out|failure during GPU discovery)",,,skip])>=0'
               name: 'Ollama: GPU discovery failed - inference may be running on CPU'
               priority: AVERAGE
               description: |
                 Ollama failed to discover the GPU during model runner startup
-                (runner.go: "failure during GPU discovery").
+                (runner.go: "failure during GPU discovery" or "GPU discovery watchdog
+                timed out").
                 
                 Impact: Ollama has silently fallen back to CPU inference. The service
                 appears healthy (port open, probe succeeds) but performance is severely
@@ -93,45 +152,54 @@ zabbix_export:
                   value: availability
                 - tag: target
                   value: ollama
-        - uuid: 699ed483b47c43a6b2bc0e28bf30a021
-          name: 'Ollama: Log - GPU VRAM recovery failures'
+        - uuid: c5b052210e824d6f83243cf820ebe821
+          name: 'Ollama: Log - llama-server process has terminated'
           type: ZABBIX_ACTIVE
-          key: 'log[/var/log/daemon.log,"ollama.*gpu VRAM usage didn''t recover within timeout",,,skip]'
+          key: 'log[{$OLLAMA.LOG_FILE},"ollama.*llama-server process has terminated",,,skip]'
           delay: '{$OLLAMA.LOG.CHECK_INTERVAL}'
           value_type: LOG
           description: |
-            Monitors /var/log/daemon.log for the message:
-              "gpu VRAM usage didn't recover within timeout"
-            This warning appears in sched.go when VRAM is not released within the expected
-            time after a model is unloaded. Repeated occurrences indicate a GPU scheduler
-            problem that can cause Ollama to fall back to loading subsequent models on CPU
-            instead of GPU, or to refuse model loading entirely.
+            Monitors {$OLLAMA.LOG_FILE} for the message:
+              "llama-server process has terminated"
+            This message is logged by Ollama when the llama-server subprocess that
+            performs the actual model inference (the "runner") exits unexpectedly while
+            a model is loaded. The most common cause is the runner being killed after a
+            CUDA/ROCm out-of-memory allocation failure; a segfault or driver crash can
+            also trigger it. The main ollama process itself keeps running and will start
+            a fresh runner on the next inference request, so this is not equivalent to
+            the service being down — but any request in flight at the time fails, and
+            frequent occurrences point to an underlying VRAM or driver stability problem.
             The item uses "skip" mode — only new log lines since the last check are evaluated.
           tags:
             - tag: component
-              value: gpu
+              value: process
           triggers:
-            - uuid: d2834e7526be4ad9a149e594dcc2f36d
-              expression: 'logseverity(/Ollama by Zabbix agent/log[/var/log/daemon.log,"ollama.*gpu VRAM usage didn''t recover within timeout",,,skip])>=0'
-              name: 'Ollama: GPU VRAM did not recover within timeout'
+            - uuid: 707d8e52d4bc41fe81a418eaae468bd5
+              expression: 'logseverity(/Ollama by Zabbix agent/log[{$OLLAMA.LOG_FILE},"ollama.*llama-server process has terminated",,,skip])>=0'
+              name: 'Ollama: llama-server process has terminated'
               priority: AVERAGE
               description: |
-                Ollama reported that GPU VRAM usage did not return to the expected level
-                after a model was unloaded (sched.go: "gpu VRAM usage didn't recover within timeout").
+                The llama-server runner subprocess terminated unexpectedly while a model
+                was loaded. Ollama will spawn a fresh runner on the next request, so the
+                service is not necessarily down, but any request that was in flight at
+                the time failed, and the loaded-model state (VRAM, keep_alive) was lost.
                 
-                Impact: Ollama may load the next model on CPU instead of GPU, causing
-                significantly slower inference. The condition does not self-resolve without
-                a restart of the ollama service.
+                Most common cause: CUDA/ROCm out-of-memory during allocation
+                (e.g. "CUDA error: out of memory", "cudaMalloc failed: out of memory").
+                A driver crash or segfault in the runner is also possible.
                 
                 Recommended action:
-                  systemctl restart ollama
+                  journalctl -u ollama --since '10 min ago' | grep -i cuda
+                  nvidia-smi   # check current VRAM usage / other processes
                 
-                If this trigger fires repeatedly, investigate GPU driver stability
-                (nvidia-smi, dmesg | grep -i nvidia).
+                If this trigger fires repeatedly, consider lowering the number of
+                concurrently loaded models, reducing {$OLLAMA.PROBE.NUM_CTX} / the
+                context size used by client requests, or freeing VRAM used by other
+                processes on the host.
               manual_close: 'YES'
               tags:
                 - tag: scope
-                  value: performance
+                  value: availability
                 - tag: target
                   value: ollama
         - uuid: b49908b36e3d4963b52b78bda2b92c34
@@ -327,7 +395,7 @@ zabbix_export:
                 - $.error
               error_handler: CUSTOM_VALUE
           master_item:
-            key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE}]'
+            key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE},{$OLLAMA.PROBE.NUM_CTX}]'
           tags:
             - tag: component
               value: probe
@@ -357,21 +425,28 @@ zabbix_export:
                   value: ollama
         - uuid: 0e8c5ffc722c48f18a5df2257041a3e5
           name: 'Ollama: Get probe response'
-          key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE}]'
+          key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE},{$OLLAMA.PROBE.NUM_CTX}]'
           delay: 10m
           history: '0'
           value_type: TEXT
           description: |
             Master item. Sends a minimal inference request (prompt: "1+1") to the model
-            defined in {$OLLAMA.PROBE.MODEL} and stores the raw JSON response.
-            Used to verify that Ollama can actually perform inference, not just that
-            the TCP port is open. History is not kept (history=0).
+            defined in {$OLLAMA.PROBE.MODEL}, requesting a context window of
+            {$OLLAMA.PROBE.NUM_CTX} tokens (options.num_ctx), and stores the raw JSON
+            response. Used to verify that Ollama can actually perform inference, not
+            just that the TCP port is open. History is not kept (history=0).
+            
+            A larger {$OLLAMA.PROBE.NUM_CTX} increases load_duration and total_duration,
+            particularly on CPU-only hosts, because Ollama allocates the KV cache for
+            the full requested context regardless of prompt length. The item timeout
+            and the wrapper script's curl timeout for the probe action are set higher
+            than for the other (metadata-only) actions to accommodate this.
             
             On network error or timeout, the wrapper script returns:
               {"error":"curl_failed","curl_exit_code":<n>}
             On empty response:
               {"error":"empty_response"}
-          timeout: 4s
+          timeout: 20s
           tags:
             - tag: component
               value: probe
@@ -395,7 +470,7 @@ zabbix_export:
               parameters:
                 - '1.0E-9'
           master_item:
-            key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE}]'
+            key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE},{$OLLAMA.PROBE.NUM_CTX}]'
           tags:
             - tag: component
               value: probe
@@ -420,7 +495,7 @@ zabbix_export:
                   } catch (e) {}
                   return 0;
           master_item:
-            key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE}]'
+            key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE},{$OLLAMA.PROBE.NUM_CTX}]'
           tags:
             - tag: component
               value: probe
@@ -469,7 +544,7 @@ zabbix_export:
               parameters:
                 - '1.0E-9'
           master_item:
-            key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE}]'
+            key: 'ollama.probe.get[{$OLLAMA.PORT},{$OLLAMA.PROBE.MODEL},{$OLLAMA.PROBE.KEEP_ALIVE},{$OLLAMA.PROBE.NUM_CTX}]'
           tags:
             - tag: component
               value: probe
@@ -585,6 +660,9 @@ zabbix_export:
         - macro: '{$OLLAMA.LOG.CHECK_INTERVAL}'
           value: 2m
           description: 'Polling interval for log[]-based items reading /var/log/daemon.log. Default: 2m. Must be shorter than the interval at which log entries could accumulate undetected, but not so short as to cause excessive disk I/O on busy hosts.'
+        - macro: '{$OLLAMA.LOG_FILE}'
+          value: /var/log/daemon.log
+          description: 'File with ollama logs.'
         - macro: '{$OLLAMA.PORT}'
           value: '11434'
           description: 'Ollama API port on localhost. Default: 11434.'
@@ -594,6 +672,9 @@ zabbix_export:
         - macro: '{$OLLAMA.PROBE.MODEL}'
           value: 'gemma3:270m'
           description: 'Model used for the inference probe (ollama.probe.get item). The model MUST be pulled on every monitored host before linking this template. Use a small, fast model (e.g. gemma3:270m, smollm2:135m).'
+        - macro: '{$OLLAMA.PROBE.NUM_CTX}'
+          value: '8192'
+          description: 'Context window size (options.num_ctx) requested for the inference probe, in tokens. Larger values increase VRAM usage and probe duration, especially on CPU-only hosts. Set it to a value representative of real client traffic on this host so the probe timings/thresholds stay meaningful. Default: 8192.'
         - macro: '{$OLLAMA.PROBE.TOTAL_DURATION.MAX.WARN}'
           value: '1'
           description: 'Warning threshold for probe total_duration, in seconds. Adjust to match the expected inference speed of {$OLLAMA.PROBE.MODEL} on this hardware. On GPU hosts 0.5s is achievable; on CPU-only hosts values of 5-30s are typical depending on the model size.'
