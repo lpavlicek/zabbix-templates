@@ -1,0 +1,392 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 5ef538dedfa34f908cc60e30ab2d87f6
+      template: 'LiteLLM Proxy'
+      name: 'LiteLLM Proxy'
+      description: |
+        Monitoring template for a self-hosted LiteLLM proxy running as a systemd service,
+        with a Zabbix agent installed on the same host.
+        
+        Covers:
+          - systemd unit / process / TCP port availability
+          - /health/liveliness and /health/readiness HTTP endpoints
+          - end-to-end functional test (real chat completion request against a configured model)
+        
+        Deliberately does not cover Prometheus /metrics, token usage or spend tracking
+        (available directly through the LiteLLM web UI).
+        
+        Vendor: lpavlicek
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 94548e931c03460e81522b1927f7f4f2
+          name: 'LiteLLM: proxy liveliness'
+          type: DEPENDENT
+          key: litellm.health.liveliness
+          description: '1 if /health/liveliness reports the proxy process alive, 0 otherwise.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - alive
+                - '1'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'web.page.get["{$LITELLM.URL}/health/liveliness"]'
+          tags:
+            - tag: component
+              value: litellm
+          triggers:
+            - uuid: 62f68fc9f755402fafbb41acacff7c0d
+              expression: 'nodata(/LiteLLM Proxy/litellm.health.liveliness,10m)=1'
+              name: 'LiteLLM: no data from liveliness check for 10m'
+              priority: WARNING
+              description: |
+                No liveliness check result for 10 minutes. Usually a connectivity problem
+                between the Zabbix agent and localhost:{$LITELLM.PORT} rather than an
+                application-level failure - check the master item litellm.health.liveliness.raw
+                for its own error state before assuming the proxy itself is down.
+              dependencies:
+                - name: 'LiteLLM: systemd unit {$LITELLM.SERVICE_NAME} is not active'
+                  expression: 'last(/LiteLLM Proxy/systemd.unit.info["{$LITELLM.SERVICE_NAME}",ActiveState])<>"active"'
+              tags:
+                - tag: component
+                  value: litellm
+            - uuid: 2c5d5b9e5d534ad3ae57406a3ae8e4c8
+              expression: 'last(/LiteLLM Proxy/litellm.health.liveliness)=0'
+              name: 'LiteLLM: proxy liveliness check failed'
+              priority: HIGH
+              description: |
+                /health/liveliness did not return the expected "alive" response. The LiteLLM
+                process may be running but its HTTP server is stuck or unresponsive - a
+                restart of {$LITELLM.SERVICE_NAME} is usually the fastest fix.
+              dependencies:
+                - name: 'LiteLLM: systemd unit {$LITELLM.SERVICE_NAME} is not active'
+                  expression: 'last(/LiteLLM Proxy/systemd.unit.info["{$LITELLM.SERVICE_NAME}",ActiveState])<>"active"'
+              tags:
+                - tag: component
+                  value: litellm
+        - uuid: 618cc58309b14a2b9d61491c90b8283d
+          name: 'LiteLLM: database connection status'
+          type: DEPENDENT
+          key: litellm.health.readiness.db
+          value_type: TEXT
+          description: |
+            Value of the "db" field from /health/readiness. Expected value: connected.
+            Relevant because models are managed in the database (store_model_in_db: true) -
+            a lost DB connection means the proxy cannot resolve any model.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.db
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: 'web.page.get["{$LITELLM.URL}/health/readiness"]'
+          tags:
+            - tag: component
+              value: litellm
+          triggers:
+            - uuid: 2e7ece163ab3412a85c6f53d03ed9565
+              expression: 'last(/LiteLLM Proxy/litellm.health.readiness.db)<>"connected"'
+              name: 'LiteLLM: database connection is down'
+              priority: HIGH
+              description: |
+                The "db" field of /health/readiness is not "connected". Because models are
+                managed in the database (store_model_in_db: true), this means the proxy
+                cannot resolve any model even though the process itself may still be up.
+                Check PostgreSQL availability and connectivity from the LiteLLM host.
+              dependencies:
+                - name: 'LiteLLM: systemd unit {$LITELLM.SERVICE_NAME} is not active'
+                  expression: 'last(/LiteLLM Proxy/systemd.unit.info["{$LITELLM.SERVICE_NAME}",ActiveState])<>"active"'
+              tags:
+                - tag: component
+                  value: litellm
+        - uuid: 5430b2a130e94b14800e3ac4670633c7
+          name: 'LiteLLM: readiness status'
+          type: DEPENDENT
+          key: litellm.health.readiness.status
+          value_type: TEXT
+          description: 'Value of the "status" field from /health/readiness. Expected value: healthy.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.status
+          master_item:
+            key: 'web.page.get["{$LITELLM.URL}/health/readiness"]'
+          tags:
+            - tag: component
+              value: litellm
+          triggers:
+            - uuid: e3014f6e90544ebfa09c239934d2c81b
+              expression: 'nodata(/LiteLLM Proxy/litellm.health.readiness.status,10m)=1'
+              name: 'LiteLLM: no data from readiness check for 10m'
+              priority: WARNING
+              description: |
+                No readiness check result for 10 minutes. Usually a connectivity problem
+                between the Zabbix agent and localhost:{$LITELLM.PORT} - check the master item
+                litellm.health.readiness.raw for its own error state.
+              dependencies:
+                - name: 'LiteLLM: systemd unit {$LITELLM.SERVICE_NAME} is not active'
+                  expression: 'last(/LiteLLM Proxy/systemd.unit.info["{$LITELLM.SERVICE_NAME}",ActiveState])<>"active"'
+              tags:
+                - tag: component
+                  value: litellm
+            - uuid: 9e3b467e6e6c4740bff6b350fff69ee9
+              expression: 'last(/LiteLLM Proxy/litellm.health.readiness.status)<>"healthy"'
+              name: 'LiteLLM: proxy is not ready to accept requests'
+              priority: HIGH
+              description: |
+                /health/readiness reports a status other than "healthy". Check
+                {$LITELLM.URL}/health/readiness directly and the litellm.health.readiness.db
+                item for the specific reason (most commonly a lost database connection).
+              dependencies:
+                - name: 'LiteLLM: systemd unit {$LITELLM.SERVICE_NAME} is not active'
+                  expression: 'last(/LiteLLM Proxy/systemd.unit.info["{$LITELLM.SERVICE_NAME}",ActiveState])<>"active"'
+              tags:
+                - tag: component
+                  value: litellm
+        - uuid: 336ab27ba77a4d719f4414f7bf4b08d1
+          name: 'LiteLLM: TCP port {$LITELLM.PORT} status'
+          key: 'net.tcp.port[,{$LITELLM.PORT}]'
+          delay: 2m
+          description: 'Whether the proxy is accepting TCP connections on its configured port.'
+          tags:
+            - tag: component
+              value: litellm
+          triggers:
+            - uuid: 2b0ba6e338384f748311f5705a80ae40
+              expression: 'last(/LiteLLM Proxy/net.tcp.port[,{$LITELLM.PORT}])=0'
+              name: 'LiteLLM: port {$LITELLM.PORT} is not listening'
+              priority: HIGH
+              description: |
+                The proxy is not accepting TCP connections on port {$LITELLM.PORT}. If the
+                process and systemd unit are otherwise reported healthy (no dependency fired),
+                check for a crashed listener thread or a local firewall/port change.
+              dependencies:
+                - name: 'LiteLLM: process is not running'
+                  expression: 'last(/LiteLLM Proxy/proc.num[,,,"{$LITELLM.PROCESS.CMDLINE}"])=0'
+                - name: 'LiteLLM: systemd unit {$LITELLM.SERVICE_NAME} is not active'
+                  expression: 'last(/LiteLLM Proxy/systemd.unit.info["{$LITELLM.SERVICE_NAME}",ActiveState])<>"active"'
+              tags:
+                - tag: component
+                  value: litellm
+        - uuid: 1bac6e2b94eb44e1b9f3f45234810ea5
+          name: 'LiteLLM: process CPU utilization'
+          key: 'proc.cpu.util[,,,"{$LITELLM.PROCESS.CMDLINE}"]'
+          delay: 2m
+          value_type: FLOAT
+          units: '%'
+          description: 'CPU utilization of the LiteLLM process(es). Informational, no trigger.'
+          tags:
+            - tag: component
+              value: litellm
+        - uuid: da2ecd8cd0034a12a472c57cd844db61
+          name: 'LiteLLM: process memory usage (RSS)'
+          key: 'proc.mem[,,sum,"{$LITELLM.PROCESS.CMDLINE}",rss]'
+          delay: 2m
+          units: B
+          description: 'Resident memory used by the LiteLLM process(es). Informational, no trigger.'
+          tags:
+            - tag: component
+              value: litellm
+        - uuid: fae9ec60dcff4123a58f37dcda1796fe
+          name: 'LiteLLM: process count'
+          key: 'proc.num[,,,"{$LITELLM.PROCESS.CMDLINE}"]'
+          delay: 2m
+          description: 'Number of running processes whose command line matches {$LITELLM.PROCESS.CMDLINE}.'
+          tags:
+            - tag: component
+              value: litellm
+          triggers:
+            - uuid: b485f1ca00204e789180e1a3cc5f3bf3
+              expression: 'nodata(/LiteLLM Proxy/proc.num[,,,"{$LITELLM.PROCESS.CMDLINE}"],10m)=1'
+              name: 'LiteLLM: no data from Zabbix agent for 10m (process count)'
+              priority: WARNING
+              description: |
+                No process-count data for 10 minutes. Usually indicates the Zabbix agent on
+                the host is unreachable or stopped, rather than LiteLLM itself being down -
+                check host availability in Zabbix and the agent daemon status.
+              dependencies:
+                - name: 'LiteLLM: systemd unit {$LITELLM.SERVICE_NAME} is not active'
+                  expression: 'last(/LiteLLM Proxy/systemd.unit.info["{$LITELLM.SERVICE_NAME}",ActiveState])<>"active"'
+              tags:
+                - tag: component
+                  value: litellm
+            - uuid: b04d12d101ed4abc9879fe2d134532ca
+              expression: 'last(/LiteLLM Proxy/proc.num[,,,"{$LITELLM.PROCESS.CMDLINE}"])=0'
+              name: 'LiteLLM: process is not running'
+              priority: HIGH
+              description: |
+                No process matching {$LITELLM.PROCESS.CMDLINE} is running. Can happen even
+                while systemd still reports the unit as active (e.g. right after a crash,
+                before systemd restarts it). Check `systemctl status {$LITELLM.SERVICE_NAME}`
+                and `journalctl -u {$LITELLM.SERVICE_NAME}` on the host.
+              dependencies:
+                - name: 'LiteLLM: systemd unit {$LITELLM.SERVICE_NAME} is not active'
+                  expression: 'last(/LiteLLM Proxy/systemd.unit.info["{$LITELLM.SERVICE_NAME}",ActiveState])<>"active"'
+              tags:
+                - tag: component
+                  value: litellm
+        - uuid: aedd381c5df2496e8c471fb813ed8b86
+          name: 'LiteLLM: systemd unit state'
+          key: 'systemd.unit.info["{$LITELLM.SERVICE_NAME}",ActiveState]'
+          delay: 2m
+          value_type: TEXT
+          description: 'Current ActiveState of the LiteLLM systemd unit. Expected value: active.'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          tags:
+            - tag: component
+              value: litellm
+          triggers:
+            - uuid: 2655786dab4c498bb0f23138c47a5b8e
+              expression: 'last(/LiteLLM Proxy/systemd.unit.info["{$LITELLM.SERVICE_NAME}",ActiveState])<>"active"'
+              name: 'LiteLLM: systemd unit {$LITELLM.SERVICE_NAME} is not active'
+              priority: HIGH
+              description: |
+                The systemd unit {$LITELLM.SERVICE_NAME} is not in the "active" state. This is
+                the root-cause check for the whole template - most other triggers depend on it
+                to avoid duplicate alerts for the same underlying outage. Check
+                `systemctl status {$LITELLM.SERVICE_NAME}` and the service journal on the host.
+              tags:
+                - tag: component
+                  value: litellm
+        - uuid: ea494b6029a4491dbd476bbe463f0ffa
+          name: 'LiteLLM: /health/liveliness raw response'
+          key: 'web.page.get["{$LITELLM.URL}/health/liveliness"]'
+          history: '0'
+          value_type: TEXT
+          description: |
+            Raw response of the liveliness probe as returned by web.page.get - includes the
+            HTTP status line and headers (web.page.get always returns the full response,
+            there is no status-code restriction to configure here). Body is plain text
+            "I'm alive!", not JSON. No cleanup needed: the dependent item just searches for
+            the substring "alive" anywhere in this raw text.
+            Master item only, history intentionally disabled (0) - see the dependent item below.
+          timeout: '{$LITELLM.HTTP.TIMEOUT}'
+          tags:
+            - tag: component
+              value: litellm
+        - uuid: cd921391275a45789fb44d9c2bd50e35
+          name: 'LiteLLM: /health/readiness raw response'
+          key: 'web.page.get["{$LITELLM.URL}/health/readiness"]'
+          delay: 2m
+          history: '0'
+          value_type: TEXT
+          description: |
+            Raw response of the readiness probe as returned by web.page.get - includes the
+            HTTP status line and headers (web.page.get always returns the full response
+            regardless of status code; LiteLLM answers with a JSON body such as
+            {"status":"healthy","db":"connected"} even on non-200 "not ready" responses).
+            Preprocessing extracts just the JSON object (regex \{.*\}) before storage, so the
+            dependent items below can run JSONPath against clean JSON instead of raw headers.
+            Master item only, history intentionally disabled (0).
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '(?s)(\{.*\})'
+                - \1
+          timeout: '{$LITELLM.HTTP.TIMEOUT}'
+          tags:
+            - tag: component
+              value: litellm
+      httptests:
+        - uuid: a9e7f26a72824b6689572d6617eeb62f
+          name: 'LiteLLM functional test'
+          delay: 5m
+          steps:
+            - name: 'Chat completion request'
+              url: '{$LITELLM.PUBLIC_URL}/v1/chat/completions'
+              posts: '{"model":"{$LITELLM.TEST_MODEL}","messages":[{"role":"user","content":"ping"}],"max_tokens":5,"temperature":0}'
+              headers:
+                - name: Content-Type
+                  value: application/json
+                - name: Authorization
+                  value: 'Bearer {$LITELLM.TEST_API_KEY}'
+              timeout: '{$LITELLM.FUNC_TEST.TIMEOUT}'
+              required: '"role":\s*"assistant"'
+              status_codes: '200'
+      tags:
+        - tag: class
+          value: application
+        - tag: target
+          value: litellm
+      macros:
+        - macro: '{$LITELLM.FUNC_TEST.MAX_RESPONSE_TIME}'
+          value: '5'
+          description: 'Response time in seconds above which the functional test is considered slow (Warning).'
+        - macro: '{$LITELLM.FUNC_TEST.TIMEOUT}'
+          value: 20s
+          description: 'Timeout of the functional test HTTP request.'
+        - macro: '{$LITELLM.HTTP.TIMEOUT}'
+          value: 10s
+          description: 'Timeout for /health/liveliness and /health/readiness requests.'
+        - macro: '{$LITELLM.PORT}'
+          value: '4000'
+          description: 'TCP port the proxy listens on.'
+        - macro: '{$LITELLM.PROCESS.CMDLINE}'
+          value: litellm
+          description: 'Pattern matched against the process command line for proc.* items.'
+        - macro: '{$LITELLM.PUBLIC_URL}'
+          value: 'https://litellm.vse.cz'
+          description: |
+            Public URL used by end users, fronted by nginx. Used ONLY by the functional test
+            (web scenario), so that test also exercises the reverse proxy / TLS layer.
+            No trailing slash. Deliberately separate from {$LITELLM.URL}, which stays on
+            localhost so the liveliness/readiness checks are independent of nginx.
+        - macro: '{$LITELLM.SERVICE_NAME}'
+          value: litellm.service
+          description: 'Name of the systemd unit running the proxy.'
+        - macro: '{$LITELLM.TEST_API_KEY}'
+          description: 'Dedicated LiteLLM virtual API key used only for the functional test. Recommended: scope it to {$LITELLM.TEST_MODEL} only, do not reuse the master key. Must be set per host after import - value is intentionally empty here.'
+        - macro: '{$LITELLM.TEST_MODEL}'
+          value: 'gemma3:270m'
+          description: 'Model name (as configured in LiteLLM) used for the functional end-to-end test.'
+        - macro: '{$LITELLM.URL}'
+          value: 'http://localhost:4000'
+          description: 'Base URL of the LiteLLM proxy.'
+  triggers:
+    - uuid: 60018a03e37d43529248ba629ace5234
+      expression: 'last(/LiteLLM Proxy/web.test.fail[LiteLLM functional test])<>0'
+      name: 'LiteLLM: functional test against model {$LITELLM.TEST_MODEL} failed'
+      priority: HIGH
+      description: |
+        The end-to-end chat completion request against {$LITELLM.TEST_MODEL} via
+        {$LITELLM.PUBLIC_URL} failed (wrong status code or the expected response content was
+        missing). This exercises the full user-facing path - nginx, TLS, LiteLLM routing and
+        the model backend - so check Monitoring > Web monitoring for the failed step details
+        to narrow down which layer is at fault.
+      dependencies:
+        - name: 'LiteLLM: systemd unit {$LITELLM.SERVICE_NAME} is not active'
+          expression: 'last(/LiteLLM Proxy/systemd.unit.info["{$LITELLM.SERVICE_NAME}",ActiveState])<>"active"'
+      tags:
+        - tag: component
+          value: litellm
+    - uuid: 0e81390198784f428ee2bef3659abefb
+      expression: 'last(/LiteLLM Proxy/web.test.time[LiteLLM functional test,Chat completion request,resp])>{$LITELLM.FUNC_TEST.MAX_RESPONSE_TIME}'
+      name: 'LiteLLM: functional test response time exceeds {$LITELLM.FUNC_TEST.MAX_RESPONSE_TIME}s'
+      priority: WARNING
+      description: |
+        The chat completion request against {$LITELLM.TEST_MODEL} took longer than
+        {$LITELLM.FUNC_TEST.MAX_RESPONSE_TIME}s to complete. Often points to a loaded or slow
+        model backend rather than a proxy problem - compare against the usual latency for this
+        model before escalating.
+      dependencies:
+        - name: 'LiteLLM: process is not running'
+          expression: 'last(/LiteLLM Proxy/proc.num[,,,"{$LITELLM.PROCESS.CMDLINE}"])=0'
+        - name: 'LiteLLM: systemd unit {$LITELLM.SERVICE_NAME} is not active'
+          expression: 'last(/LiteLLM Proxy/systemd.unit.info["{$LITELLM.SERVICE_NAME}",ActiveState])<>"active"'
+      tags:
+        - tag: component
+          value: litellm
