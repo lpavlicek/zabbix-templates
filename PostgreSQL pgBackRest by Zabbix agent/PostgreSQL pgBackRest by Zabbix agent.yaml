@@ -1,0 +1,569 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: dc7b7732277542c5bea1b6aff174720d
+      template: 'PostgreSQL pgBackRest by Zabbix agent'
+      name: 'PostgreSQL pgBackRest by Zabbix agent'
+      description: |
+        Monitoring of pgBackRest backups for a single PostgreSQL stanza via Zabbix agent,
+        without any additional exporter software.
+        
+        Data sources:
+          - `pgbackrest info --output=json --stanza=<stanza>` executed by the Zabbix agent
+            (UserParameter `pgbackrest.info`). The zabbix user must be able to read the
+            pgbackrest repository/config, e.g. by membership in the `postgres` group.
+          - A daily `pgbackrest check` run by an external systemd timer
+            (pgbackrest-check@<stanza>.timer/.service, running as user postgres), with
+            console output redirected to `{$PGBACKREST.CHECK.LOG.DIR}/<stanza>-check.log`.
+            The Zabbix agent only reads this file (vfs.file.* keys), it does not execute
+            pgbackrest check itself.
+        
+        Required macros to set on the host:
+          - {$PGBACKREST.STANZA} - name of the pgbackrest stanza on this host (mandatory,
+            no default value).
+        
+        Supports an arbitrary, non-contiguous set of repositories (repo1, repo3, ...) and
+        an arbitrary set of backup types (full/diff/incr) present in the actual backup
+        history, discovered dynamically via LLD.
+      vendor:
+        name: lpavlicek
+        version: '7.4-1'
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: cb1c4d5ec3d14a55873c4859d6f44754
+          name: 'pgBackRest: check log age'
+          type: CALCULATED
+          key: 'pgbackrest.check.log.age.seconds[{$PGBACKREST.STANZA}]'
+          delay: 1h
+          history: 90d
+          units: s
+          params: 'now()-last(//vfs.file.time[{$PGBACKREST.CHECK.LOG.DIR}/{$PGBACKREST.STANZA}-check.log,modify])'
+          description: 'Age (in seconds) of the pgbackrest-check log file. Convenience item for graphing.'
+          tags:
+            - tag: component
+              value: pgbackrest
+        - uuid: 85feffd981c845f5b9840f21c88fba9f
+          name: 'pgBackRest: info raw data'
+          key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+          delay: 15m
+          history: '0'
+          value_type: TEXT
+          description: |
+            Raw JSON output of `pgbackrest info --output=json --stanza={$PGBACKREST.STANZA}`.
+            Not stored in history (TimescaleDB housekeeping ignores per-item history
+            overrides, so history is set to 0 here to avoid storing large text blobs).
+            Most other pgbackrest.* items (stanza/repo status, archive WAL range, backup
+            timestamps/sizes/counts) are dependent items derived from this one. The two
+            *.age items are calculated items derived from other items instead (see their
+            own descriptions), and the check.* items read the pgbackrest-check log file
+            independently.
+          tags:
+            - tag: component
+              value: pgbackrest
+        - uuid: 5357bc3b2077446c8f76d4c511c249b8
+          name: 'pgBackRest: stanza status code'
+          type: DEPENDENT
+          key: pgbackrest.stanza.status.code
+          history: 7d
+          description: 'Overall pgbackrest stanza status code (0 = ok).'
+          valuemap:
+            name: 'pgBackRest: stanza status code'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$[0].status.code'
+          master_item:
+            key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+          tags:
+            - tag: component
+              value: pgbackrest
+          triggers:
+            - uuid: 64205acbe89543eaa18e9fae79e68b51
+              expression: 'nodata(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.stanza.status.code,1h)=1'
+              name: 'pgBackRest: No data from pgbackrest info for stanza {$PGBACKREST.STANZA} for 1h'
+              priority: HIGH
+              description: |
+                pgbackrest info stopped returning parseable data (e.g. broken permissions,
+                missing binary, wrong stanza name). This masks all other checks based on
+                the info JSON, so it is raised with high priority.
+              tags:
+                - tag: component
+                  value: pgbackrest
+        - uuid: 3cb6275c7a2e44139174eceb4ad2faf3
+          name: 'pgBackRest: stanza status message'
+          type: DEPENDENT
+          key: pgbackrest.stanza.status.message
+          history: 7d
+          value_type: CHAR
+          description: 'Overall pgbackrest stanza status message.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$[0].status.message'
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 12h
+          master_item:
+            key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+          tags:
+            - tag: component
+              value: pgbackrest
+        - uuid: 13c78d5f41a84312b875ca145602e450
+          name: 'pgBackRest: check log last error text'
+          key: 'vfs.file.regexp[{$PGBACKREST.CHECK.LOG.DIR}/{$PGBACKREST.STANZA}-check.log,ERROR:.*]'
+          delay: 1h
+          history: 7d
+          value_type: CHAR
+          description: 'Text of the last ERROR: line found in the pgbackrest-check log, for trigger context.'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 12h
+          tags:
+            - tag: component
+              value: pgbackrest
+        - uuid: 234d48da24704c59b0591a41a78a90bc
+          name: 'pgBackRest: check log contains error'
+          key: 'vfs.file.regmatch[{$PGBACKREST.CHECK.LOG.DIR}/{$PGBACKREST.STANZA}-check.log,"ERROR:"]'
+          delay: 1h
+          history: 7d
+          description: 'Whether the last pgbackrest-check log contains an ERROR: line (0 = no, 1 = yes).'
+          valuemap:
+            name: 'pgBackRest: boolean check result'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 12h
+          tags:
+            - tag: component
+              value: pgbackrest
+          triggers:
+            - uuid: 231b295b3f31439596898dca16637ad9
+              expression: 'last(/PostgreSQL pgBackRest by Zabbix agent/vfs.file.regmatch[{$PGBACKREST.CHECK.LOG.DIR}/{$PGBACKREST.STANZA}-check.log,"ERROR:"])=1'
+              name: 'pgBackRest: check command reported an error for stanza {$PGBACKREST.STANZA} ({ITEM.LASTVALUE2})'
+              priority: HIGH
+              description: |
+                The last `pgbackrest check` run reported an ERROR line - archiving or
+                connectivity to one of the repositories is broken.
+              dependencies:
+                - name: 'pgBackRest: check log for stanza {$PGBACKREST.STANZA} was not updated for {$PGBACKREST.CHECK.MAX.AGE}'
+                  expression: '(now()-last(/PostgreSQL pgBackRest by Zabbix agent/vfs.file.time[{$PGBACKREST.CHECK.LOG.DIR}/{$PGBACKREST.STANZA}-check.log,modify]))>{$PGBACKREST.CHECK.MAX.AGE} or nodata(/PostgreSQL pgBackRest by Zabbix agent/vfs.file.time[{$PGBACKREST.CHECK.LOG.DIR}/{$PGBACKREST.STANZA}-check.log,modify],{$PGBACKREST.CHECK.MAX.AGE})=1'
+              tags:
+                - tag: component
+                  value: pgbackrest
+        - uuid: 5afb966a58974e278ea6cb7048c400c7
+          name: 'pgBackRest: check log last modified'
+          key: 'vfs.file.time[{$PGBACKREST.CHECK.LOG.DIR}/{$PGBACKREST.STANZA}-check.log,modify]'
+          delay: 1h
+          history: 7d
+          description: |
+            Modification time (unixtime) of the pgbackrest-check systemd timer's output
+            log file. Used to detect whether the daily `pgbackrest check` actually ran.
+          tags:
+            - tag: component
+              value: pgbackrest
+          triggers:
+            - uuid: 629a87a1d0f54a0cb99db213116fb38b
+              expression: '(now()-last(/PostgreSQL pgBackRest by Zabbix agent/vfs.file.time[{$PGBACKREST.CHECK.LOG.DIR}/{$PGBACKREST.STANZA}-check.log,modify]))>{$PGBACKREST.CHECK.MAX.AGE} or nodata(/PostgreSQL pgBackRest by Zabbix agent/vfs.file.time[{$PGBACKREST.CHECK.LOG.DIR}/{$PGBACKREST.STANZA}-check.log,modify],{$PGBACKREST.CHECK.MAX.AGE})=1'
+              name: 'pgBackRest: check log for stanza {$PGBACKREST.STANZA} was not updated for {$PGBACKREST.CHECK.MAX.AGE}'
+              priority: AVERAGE
+              description: |
+                The pgbackrest-check@{$PGBACKREST.STANZA}.timer did not produce a fresh
+                log file in time - the systemd timer may not be running, or the check
+                command is hanging.
+              tags:
+                - tag: component
+                  value: pgbackrest
+      discovery_rules:
+        - uuid: 2f5097b572914fe0978ff3a16984cd92
+          name: 'pgBackRest: backup discovery'
+          type: DEPENDENT
+          key: pgbackrest.backup.discovery
+          lifetime: 30d
+          description: |
+            Discovers all distinct (repository, backup type) combinations currently
+            present in the backup history - so a server with e.g. only full backups
+            does not get diff/incr items, and vice versa.
+          item_prototypes:
+            - uuid: 1585c4d369ac41da97881c9e73bf9013
+              name: 'pgBackRest: {#TYPE} backup count in repo {#REPO}'
+              type: DEPENDENT
+              key: 'pgbackrest.backup.count[{#REPO},{#TYPE}]'
+              history: 90d
+              description: |
+                Number of {#TYPE} backups currently retained in repo {#REPO}. Informational
+                only (no trigger) - retention periods differ per server and per repository.
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var data = JSON.parse(value);
+                      var backups = data[0].backup.filter(function(b) {
+                          return b.database['repo-key'] == {#REPO} && b.type == '{#TYPE}';
+                      });
+                      return backups.length;
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 12h
+              master_item:
+                key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+              tags:
+                - tag: component
+                  value: pgbackrest
+            - uuid: 71d554dcd2ef4a738d96ad14a5511808
+              name: 'pgBackRest: last {#TYPE} backup age in repo {#REPO}'
+              type: CALCULATED
+              key: 'pgbackrest.backup.last.age[{#REPO},{#TYPE}]'
+              delay: 15m
+              history: 90d
+              units: s
+              params: 'now()-last(//pgbackrest.backup.last.timestamp[{#REPO},{#TYPE}])'
+              description: 'Age (in seconds) of the most recent {#TYPE} backup in repo {#REPO}. Convenience item for graphing.'
+              tags:
+                - tag: component
+                  value: pgbackrest
+            - uuid: d32a1c458d7c4a6f940d88ea7b400a9a
+              name: 'pgBackRest: last {#TYPE} backup size (database) in repo {#REPO}'
+              type: DEPENDENT
+              key: 'pgbackrest.backup.last.size.db[{#REPO},{#TYPE}]'
+              history: 90d
+              units: B
+              description: 'Amount of database data actually backed up (info.delta) for the most recent {#TYPE} backup in repo {#REPO}. Equal to the full database size for full backups, much smaller for diff/incr.'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var data = JSON.parse(value);
+                      var backups = data[0].backup.filter(function(b) {
+                          return b.database['repo-key'] == {#REPO} && b.type == '{#TYPE}';
+                      });
+                      if (backups.length === 0) {
+                          return '';
+                      }
+                      backups.sort(function(a, b) {
+                          return b.timestamp.stop - a.timestamp.stop;
+                      });
+                      return backups[0].info.delta;
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 12h
+              master_item:
+                key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+              tags:
+                - tag: component
+                  value: pgbackrest
+            - uuid: b7d999eb85974db9a332b41c14f4ddca
+              name: 'pgBackRest: last {#TYPE} backup size (repository) in repo {#REPO}'
+              type: DEPENDENT
+              key: 'pgbackrest.backup.last.size.repo[{#REPO},{#TYPE}]'
+              history: 90d
+              units: B
+              description: 'Compressed size of this specific backup on the repository (info.repository.delta) for the most recent {#TYPE} backup in repo {#REPO}. Note: info.repository.size is the cumulative "backup set size" (same for the whole chain), not what we want here.'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var data = JSON.parse(value);
+                      var backups = data[0].backup.filter(function(b) {
+                          return b.database['repo-key'] == {#REPO} && b.type == '{#TYPE}';
+                      });
+                      if (backups.length === 0) {
+                          return '';
+                      }
+                      backups.sort(function(a, b) {
+                          return b.timestamp.stop - a.timestamp.stop;
+                      });
+                      return backups[0].info.repository.delta;
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 12h
+              master_item:
+                key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+              tags:
+                - tag: component
+                  value: pgbackrest
+            - uuid: d43e3b190c894de984dec5e761d7cbc0
+              name: 'pgBackRest: last {#TYPE} backup timestamp in repo {#REPO}'
+              type: DEPENDENT
+              key: 'pgbackrest.backup.last.timestamp[{#REPO},{#TYPE}]'
+              history: 90d
+              units: unixtime
+              description: 'Unix timestamp (timestamp.stop) of the most recent {#TYPE} backup in repo {#REPO}.'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var data = JSON.parse(value);
+                      var backups = data[0].backup.filter(function(b) {
+                          return b.database['repo-key'] == {#REPO} && b.type == '{#TYPE}';
+                      });
+                      if (backups.length === 0) {
+                          return '';
+                      }
+                      backups.sort(function(a, b) {
+                          return b.timestamp.stop - a.timestamp.stop;
+                      });
+                      return backups[0].timestamp.stop;
+              master_item:
+                key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+              tags:
+                - tag: component
+                  value: pgbackrest
+              trigger_prototypes:
+                - uuid: 025e96e540aa46aaabd500784b2d5e32
+                  expression: '(now()-last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.backup.last.timestamp[{#REPO},{#TYPE}]))>{$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"} or nodata(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.backup.last.timestamp[{#REPO},{#TYPE}],{$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"})=1'
+                  name: 'pgBackRest: last {#TYPE} backup in repo {#REPO} is older than {$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"} (stanza {$PGBACKREST.STANZA})'
+                  priority: AVERAGE
+                  description: |
+                    No new {#TYPE} backup has been recorded in repository {#REPO} for
+                    longer than the configured maximum age (or no data has been received
+                    from pgbackrest info at all for that long).
+                  tags:
+                    - tag: component
+                      value: pgbackrest
+          master_item:
+            key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var backups = data[0].backup;
+                  var seen = {};
+                  var result = [];
+                  for (var i = 0; i < backups.length; i++) {
+                      var repo = backups[i].database['repo-key'];
+                      var type = backups[i].type;
+                      var k = repo + '_' + type;
+                      if (!seen[k]) {
+                          seen[k] = true;
+                          result.push({'{#REPO}': repo, '{#TYPE}': type});
+                      }
+                  }
+                  return JSON.stringify(result);
+        - uuid: 0af0c22f18414185b130f8b25507161e
+          name: 'pgBackRest: repository discovery'
+          type: DEPENDENT
+          key: pgbackrest.repo.discovery
+          lifetime: 30d
+          description: 'Discovers all repositories (repo[] entries) currently present in pgbackrest info, regardless of numbering gaps.'
+          item_prototypes:
+            - uuid: 3ead528330234a0b966afae1d2c5d9e0
+              name: 'pgBackRest: repo {#REPO} archive max WAL segment'
+              type: DEPENDENT
+              key: 'pgbackrest.repo.archive.max[{#REPO}]'
+              history: 7d
+              value_type: CHAR
+              description: |
+                Newest WAL segment currently archived on repository {#REPO}, for the
+                database with the highest database.id (i.e. the current PostgreSQL
+                version), informational only.
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var data = JSON.parse(value);
+                      var archives = data[0].archive.filter(function(a) {
+                          return a.database['repo-key'] == {#REPO};
+                      });
+                      if (archives.length === 0) {
+                          return '';
+                      }
+                      archives.sort(function(a, b) {
+                          return b.database.id - a.database.id;
+                      });
+                      return archives[0].max;
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 12h
+              master_item:
+                key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+              tags:
+                - tag: component
+                  value: pgbackrest
+            - uuid: 466ec5b73fc94308a2bfeab622a4657a
+              name: 'pgBackRest: repo {#REPO} archive min WAL segment'
+              type: DEPENDENT
+              key: 'pgbackrest.repo.archive.min[{#REPO}]'
+              history: 7d
+              value_type: CHAR
+              description: |
+                Oldest WAL segment currently archived on repository {#REPO}, for the
+                database with the highest database.id (i.e. the current PostgreSQL
+                version), informational only.
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var data = JSON.parse(value);
+                      var archives = data[0].archive.filter(function(a) {
+                          return a.database['repo-key'] == {#REPO};
+                      });
+                      if (archives.length === 0) {
+                          return '';
+                      }
+                      archives.sort(function(a, b) {
+                          return b.database.id - a.database.id;
+                      });
+                      return archives[0].min;
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 12h
+              master_item:
+                key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+              tags:
+                - tag: component
+                  value: pgbackrest
+            - uuid: ca73f05bb6e44a8aa38fd738d9e6adaf
+              name: 'pgBackRest: repo {#REPO} status code'
+              type: DEPENDENT
+              key: 'pgbackrest.repo.status.code[{#REPO}]'
+              history: 7d
+              description: 'Status code of repository {#REPO} (0 = ok). Codes 4 and 5 (mixed / db mismatch) never occur at this per-repo level, only in the aggregated stanza status.'
+              valuemap:
+                name: 'pgBackRest: stanza status code'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[0].repo[?(@.key=={#REPO})].status.code.first()'
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 12h
+              master_item:
+                key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+              tags:
+                - tag: component
+                  value: pgbackrest
+            - uuid: f2356104984b47e9b3399453177106c6
+              name: 'pgBackRest: repo {#REPO} status message'
+              type: DEPENDENT
+              key: 'pgbackrest.repo.status.message[{#REPO}]'
+              history: 7d
+              value_type: CHAR
+              description: 'Status message of repository {#REPO}. For status code 99 this contains the actual underlying error text (not just the word "other").'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[0].repo[?(@.key=={#REPO})].status.message.first()'
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 12h
+              master_item:
+                key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+              tags:
+                - tag: component
+                  value: pgbackrest
+            - uuid: b296893657b54e1993419b6efa895d9f
+              name: 'pgBackRest: check confirmed WAL archiving to repo {#REPO}'
+              key: 'vfs.file.regmatch[{$PGBACKREST.CHECK.LOG.DIR}/{$PGBACKREST.STANZA}-check.log,"successfully archived.*on repo{#REPO}"]'
+              delay: 1h
+              history: 7d
+              description: |
+                Whether the last pgbackrest-check log confirmed a successful WAL archive
+                test specifically on repository {#REPO}.
+              preprocessing:
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 12h
+              tags:
+                - tag: component
+                  value: pgbackrest
+              trigger_prototypes:
+                - uuid: 8c926bd40f4b44649678116c721bee25
+                  expression: 'last(/PostgreSQL pgBackRest by Zabbix agent/vfs.file.regmatch[{$PGBACKREST.CHECK.LOG.DIR}/{$PGBACKREST.STANZA}-check.log,"successfully archived.*on repo{#REPO}"])=0'
+                  name: 'pgBackRest: check did not confirm WAL archiving to repo {#REPO} for stanza {$PGBACKREST.STANZA}'
+                  priority: AVERAGE
+                  description: |
+                    The last pgbackrest-check run did not confirm a successful WAL archive
+                    test for this specific repository.
+                  dependencies:
+                    - name: 'pgBackRest: check log for stanza {$PGBACKREST.STANZA} was not updated for {$PGBACKREST.CHECK.MAX.AGE}'
+                      expression: '(now()-last(/PostgreSQL pgBackRest by Zabbix agent/vfs.file.time[{$PGBACKREST.CHECK.LOG.DIR}/{$PGBACKREST.STANZA}-check.log,modify]))>{$PGBACKREST.CHECK.MAX.AGE} or nodata(/PostgreSQL pgBackRest by Zabbix agent/vfs.file.time[{$PGBACKREST.CHECK.LOG.DIR}/{$PGBACKREST.STANZA}-check.log,modify],{$PGBACKREST.CHECK.MAX.AGE})=1'
+                  tags:
+                    - tag: component
+                      value: pgbackrest
+          trigger_prototypes:
+            - uuid: da14a60e06bc414e87784543d99338a4
+              expression: 'last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.repo.status.code[{#REPO}])<>0 and last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.repo.status.message[{#REPO}])<>""'
+              name: 'pgBackRest: Repo {#REPO} status is not OK for stanza {$PGBACKREST.STANZA} ({ITEM.LASTVALUE2})'
+              priority: HIGH
+              description: 'This specific repository reports a non-OK status in pgbackrest info.'
+              tags:
+                - tag: component
+                  value: pgbackrest
+          master_item:
+            key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var repos = data[0].repo;
+                  var result = [];
+                  for (var i = 0; i < repos.length; i++) {
+                      result.push({'{#REPO}': repos[i].key});
+                  }
+                  return JSON.stringify(result);
+      tags:
+        - tag: class
+          value: application
+        - tag: target
+          value: pgbackrest
+      valuemaps:
+        - uuid: 63432f098e7a4ed387df426fa6c6ce35
+          name: 'pgBackRest: boolean check result'
+          mappings:
+            - value: '0'
+              newvalue: 'No'
+            - value: '1'
+              newvalue: 'Yes'
+        - uuid: 72879a795c2244a5a8392450daaccd7f
+          name: 'pgBackRest: stanza status code'
+          mappings:
+            - value: '0'
+              newvalue: OK
+            - value: '1'
+              newvalue: 'Missing stanza path'
+            - value: '2'
+              newvalue: 'No valid backups'
+            - value: '3'
+              newvalue: 'Missing stanza data'
+            - value: '4'
+              newvalue: 'Mixed (different across repos)'
+            - value: '5'
+              newvalue: 'Database mismatch across repos'
+            - value: '6'
+              newvalue: 'Requested backup not found'
+            - value: '99'
+              newvalue: 'Other error (see status message)'
+      macros:
+        - macro: '{$PGBACKREST.BACKUP.MAX.AGE:"diff"}'
+          value: 26h
+          description: 'Maximum allowed age of the last diff backup before raising a trigger. Override per host/repo type as needed.'
+        - macro: '{$PGBACKREST.BACKUP.MAX.AGE:"full"}'
+          value: 8d
+          description: 'Maximum allowed age of the last full backup before raising a trigger. Override to e.g. 26h on hosts doing daily full backups.'
+        - macro: '{$PGBACKREST.BACKUP.MAX.AGE:"incr"}'
+          value: 26h
+          description: 'Maximum allowed age of the last incr backup before raising a trigger. Override per host/repo type as needed.'
+        - macro: '{$PGBACKREST.CHECK.LOG.DIR}'
+          value: /var/log/pgbackrest
+          description: 'Directory where the pgbackrest-check@<stanza>.service writes its output log file.'
+        - macro: '{$PGBACKREST.CHECK.MAX.AGE}'
+          value: 32h
+          description: 'Maximum allowed age of the pgbackrest-check log file before raising a trigger (daily timer + safety margin).'
+        - macro: '{$PGBACKREST.STANZA}'
+          description: 'Name of the pgbackrest stanza to monitor on this host. Mandatory, no default - must be set per host.'
+  triggers:
+    - uuid: d00cb1dad681405ca610eeda92e0f606
+      expression: 'last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.stanza.status.code)<>0 and last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.stanza.status.message)<>""'
+      name: 'pgBackRest: Stanza {$PGBACKREST.STANZA} status is not OK ({ITEM.LASTVALUE2})'
+      priority: HIGH
+      description: 'The overall stanza status reported by pgbackrest info is not OK.'
+      tags:
+        - tag: component
+          value: pgbackrest
