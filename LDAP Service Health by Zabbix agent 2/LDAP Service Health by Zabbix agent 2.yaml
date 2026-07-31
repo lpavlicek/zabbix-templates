@@ -1,0 +1,152 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 50264a82c3c349e19eaace133c06dbc4
+      template: 'LDAP Service Health by Zabbix agent 2'
+      name: 'LDAP Service Health by Zabbix agent 2'
+      description: |
+        Monitoring of OpenLDAP (slapd) service health via Zabbix agent 2.
+        
+        Covers:
+          - systemd service state of slapd.service
+          - LDAPS port ({$LDAP.PORT}) availability
+          - error-level messages in the slapd log file (severity notice and above)
+        
+        Intended for hosts running slapd with a local Zabbix agent 2 (e.g. demo,
+        ldaptest.vse.cz, ldap4.vse.cz, ldap5.vse.cz). Not intended for hosts without
+        an agent (e.g. a primary LDAP server reachable only over the network) or for
+        the anycast VIP host - use the LDAP Functional Bind Check and LDAP Statistics
+        templates there instead.
+        
+        Requires Zabbix agent 2 - the systemd.unit.info key is not available in
+        classic Zabbix agent 1.
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 92047965284c4d1080ff47386a60102b
+          name: 'slapd: error messages in log (notice and above)'
+          type: ZABBIX_ACTIVE
+          key: 'log[{$LDAP.LOG.PATH},"^\S+ (notice|warning|err|crit|alert|emerg) "]'
+          delay: 10s
+          value_type: LOG
+          description: |
+            Monitors the slapd log file for lines whose syslog severity is
+            "notice" or higher (notice, warning, err, crit, alert, emerg). Lines
+            logged at "debug" or "info" level are ignored.
+            
+            Expected log line format:
+            "<timestamp> <severity> <facility> slapd[<pid>]: <message>"
+            e.g. "2026-07-30T09:58:29+02:00 info daemon slapd[348257]: Starting OpenLDAP: slapd."
+            
+            Only lines matching the severity regex are stored in item history.
+          tags:
+            - tag: component
+              value: log
+          triggers:
+            - uuid: b90584b7b2254603998a0ac59e169d52
+              expression: 'find(/LDAP Service Health by Zabbix agent 2/log[{$LDAP.LOG.PATH},"^\S+ (notice|warning|err|crit|alert|emerg) "],,,".+")=1'
+              recovery_mode: NONE
+              name: 'slapd: Error found in log on {HOST.NAME}'
+              priority: WARNING
+              description: |
+                A log line with severity notice or higher was found in
+                {$LDAP.LOG.PATH}. Check the log file for details.
+                
+                OK event generation is set to None with manual close allowed:
+                each matching line raises a new problem event (Problem event
+                generation: Multiple), and problems must be closed manually in
+                Zabbix once reviewed - they do not auto-resolve.
+              type: MULTIPLE
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: log
+        - uuid: 586d715aac3f4a5d9cc286bfa8e3f805
+          name: 'slapd: LDAPS port availability'
+          key: 'net.tcp.listen[{$LDAP.PORT}]'
+          description: 'Checks whether the LDAPS port ({$LDAP.PORT}) is in LISTEN state on this host (local check via Zabbix agent). Does not verify TLS handshake, certificate validity, or reachability from outside — see the sslscan and Functional Bind Check templates for that.'
+          valuemap:
+            name: 'slapd port available'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          tags:
+            - tag: component
+              value: slapd
+          triggers:
+            - uuid: 57b412a09470426c9ac7e89b0d477819
+              expression: 'last(/LDAP Service Health by Zabbix agent 2/net.tcp.listen[{$LDAP.PORT}])=0'
+              name: 'slapd: LDAPS port {$LDAP.PORT} is unavailable on {HOST.NAME}'
+              priority: HIGH
+              description: |
+                The LDAPS port ({$LDAP.PORT}) is not in LISTEN state on {HOST.NAME}.
+                Depends on the "Service is not running" trigger, so this trigger
+                will not fire separately when slapd itself is already down.
+              dependencies:
+                - name: 'slapd: Service is not running on {HOST.NAME}'
+                  expression: 'last(/LDAP Service Health by Zabbix agent 2/systemd.unit.info["slapd.service",ActiveState])<>"active"'
+              tags:
+                - tag: component
+                  value: slapd
+        - uuid: 673fc41862b84a39b1d1502c0aacc567
+          name: 'slapd: memory usage, %'
+          key: 'proc.mem[slapd,,,,pmem]'
+          value_type: FLOAT
+          units: '%'
+          description: 'The percentage of real memory used by the process slapd.'
+          tags:
+            - tag: component
+              value: slapd
+        - uuid: 52368fec4f704f4581fd5610a3fefa23
+          name: 'slapd: systemd service state'
+          key: 'systemd.unit.info["slapd.service",ActiveState]'
+          value_type: CHAR
+          description: |
+            Current state of the slapd systemd unit (active, inactive, failed, ...),
+            as reported by systemd.unit.info. Requires Zabbix agent 2.
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          tags:
+            - tag: component
+              value: slapd
+          triggers:
+            - uuid: e5e955b4ab364253b2f2db39d940c5e9
+              expression: 'last(/LDAP Service Health by Zabbix agent 2/systemd.unit.info["slapd.service",ActiveState])<>"active"'
+              name: 'slapd: Service is not running on {HOST.NAME}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: HIGH
+              description: |
+                The slapd systemd unit is not in the "active" state. Check
+                "systemctl status slapd.service" and the slapd log for details.
+              tags:
+                - tag: component
+                  value: slapd
+      tags:
+        - tag: class
+          value: application
+        - tag: target
+          value: ldap
+      macros:
+        - macro: '{$LDAP.LOG.PATH}'
+          value: /var/log/slapd.log
+          description: 'Path to the slapd log file monitored for error-level messages.'
+        - macro: '{$LDAP.PORT}'
+          value: '636'
+          description: 'TCP port used for LDAPS, checked for plain TCP availability.'
+      valuemaps:
+        - uuid: 318ff26a2f5147eca3858e27a4a5c9c4
+          name: 'slapd port available'
+          mappings:
+            - value: '1'
+              newvalue: Up
+            - value: '0'
+              newvalue: Down
