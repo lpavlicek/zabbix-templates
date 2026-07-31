@@ -1,0 +1,111 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 4ac52268189a4ebb961f747500cdc099
+      template: 'LDAP Functional Bind Check'
+      name: 'LDAP Functional Bind Check'
+      description: |
+        Functional test of OpenLDAP (slapd) availability via an authenticated
+        LDAPS bind followed by a base-scope search of the rootDSE. Anonymous
+        bind is disabled on all monitored LDAP servers, so this is the only
+        way to confirm both the bind path and the search path actually work,
+        not just that the TCP port is open (see the sslscan and LDAP Service
+        Health templates for TLS-only and process/port-only checks).
+        
+        Implemented as a Zabbix external check (runs on the Zabbix server or
+        proxy, not on the monitored host), so it works equally for hosts
+        with a local Zabbix agent, for the primary LDAP server that is only
+        reachable over the network, and for the anycast VIP host.
+        
+        Requires:
+          - the "ldap_bind_check.sh" script installed in the Zabbix
+            server/proxy's ExternalScripts directory (see zabbix_server.conf
+            or zabbix_proxy.conf, parameter "ExternalScripts");
+          - the "ldapsearch" binary (package ldap-utils on Debian/Ubuntu)
+            available on the Zabbix server/proxy;
+          - each host this template is linked to must have at least one
+            interface configured with its DNS name field filled in (e.g. an
+            Agent interface with DNS name "ldap4.vse.cz"), even if no agent
+            actually runs there and even if the interface's "Connect to" is
+            set to IP - the item key uses {HOST.DNS} rather than {HOST.CONN}
+            specifically so that the connection always goes out to the DNS
+            name, never the bare IP address, since the server certificate
+            does not validate against an IP.
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 2a735a327f80405d9f3a03f38274ac38
+          name: 'LDAP: Functional bind and search test (LDAPS)'
+          type: EXTERNAL
+          key: 'ldap_bind_check.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          delay: 5m
+          value_type: TEXT
+          description: |
+            Runs an authenticated LDAPS bind as {$LDAP.BIND.DN} followed by a
+            base-scope search of the rootDSE ("(objectClass=*)" against an
+            empty base). Value is "OK" if bind and search both succeeded and
+            at least one entry was returned, or "FAILED: <reason>" for any
+            failure - bad credentials, network/TLS error, timeout, a
+            deployment problem such as an unset {$LDAP.BIND.PASSWORD} on this
+            host, or a search that unexpectedly returned zero entries
+            despite a successful LDAP result code. The reason text comes
+            either from the script's own parameter validation or, for actual
+            connection/bind/search failures, from ldapsearch's own error
+            output, so it can be used to diagnose problems directly from
+            Zabbix without needing to log into the Zabbix server.
+            
+            Note: the bind password is passed to the script as a plain
+            command-line argument (via {$LDAP.BIND.PASSWORD}), so it is
+            visible in the process list on the Zabbix server for the
+            duration of each check.
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 2h
+          timeout: 5s
+          tags:
+            - tag: component
+              value: ldap
+          triggers:
+            - uuid: eeb480a2cff94d67866d3e409f42612a
+              expression: 'last(/LDAP Functional Bind Check/ldap_bind_check.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}])<>"OK"'
+              name: 'LDAP: Functional bind+search test failed on {HOST.NAME}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: HIGH
+              description: |
+                Authenticated LDAPS bind and/or rootDSE search against
+                {HOST.DNS}:{$LDAP.PORT} failed using account
+                {$LDAP.BIND.DN}. Operational data shows the reason reported
+                by the item itself.
+                
+                To verify manually (prompts for the password):
+                  ldapsearch -x -H ldaps://{HOST.DNS}:{$LDAP.PORT} -D "{$LDAP.BIND.DN}" -W -b "" -s base "(objectClass=*)"
+                
+                A successful result includes "result: 0 Success" and
+                "# numEntries: 1" in the output.
+              tags:
+                - tag: component
+                  value: ldap
+      tags:
+        - tag: class
+          value: application
+        - tag: target
+          value: ldap
+      macros:
+        - macro: '{$LDAP.BIND.DN}'
+          value: 'uid=monitor,ou=admin,dc=vse,dc=cz'
+          description: 'Bind DN used for the functional test (same account on every LDAP server; anonymous bind is disabled).'
+        - macro: '{$LDAP.BIND.PASSWORD}'
+          description: 'Password for {$LDAP.BIND.DN}. Must be set per host - the demo LDAP server uses a different password than the others.'
+        - macro: '{$LDAP.BIND.TIMEOUT}'
+          value: '3'
+          description: 'Network and search time limit (seconds) passed to ldapsearch (-o nettimeout, -l).'
+        - macro: '{$LDAP.PORT}'
+          value: '636'
+          description: 'TCP port used for LDAPS.'
