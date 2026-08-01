@@ -1,0 +1,369 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 4b8984b6950d46a49e160217c80c2c0c
+      template: 'LDAP Statistics'
+      name: 'LDAP Statistics'
+      description: |
+        Basic OpenLDAP (slapd) traffic and health statistics, read from the
+        cn=Monitor tree (back-monitor overlay) via an authenticated LDAPS
+        bind - anonymous bind is disabled on all monitored LDAP servers.
+
+        Implemented as a Zabbix external check (runs on the Zabbix server or
+        proxy, not on the monitored host), so it works equally for hosts
+        with a local Zabbix agent and for the primary LDAP server that is
+        only reachable over the network.
+
+        Covers:
+          - operations completed per type (bind, unbind, search, compare,
+            modify, modrdn, add, delete, abandon, extended), as ops/sec;
+          - current number of connections;
+          - slapd start time (indirect signal of a recent restart);
+          - visibility into ldap_stats.sh itself failing to collect any
+            data at all (see the "cn=Monitor collection error" item).
+
+        Only the collection-error item has a trigger - the statistics
+        themselves (operation rates, connections, start time) are purely
+        for graphing/historical visibility and have none.
+
+        Requires:
+          - the "ldap_stats.sh" script installed in the Zabbix server/proxy's
+            ExternalScripts directory (see zabbix_server.conf or
+            zabbix_proxy.conf, parameter "ExternalScripts");
+          - the "ldapsearch" binary (package ldap-utils on Debian/Ubuntu)
+            available on the Zabbix server/proxy;
+          - back-monitor loaded on the target LDAP server, and the bind
+            account granted read access to the cn=Monitor subtree;
+          - each host this template is linked to must have at least one
+            interface configured with its DNS name field filled in (e.g. an
+            Agent interface with DNS name "ldap4.vse.cz"), even if no agent
+            actually runs there - the item key uses {HOST.DNS} rather than
+            {HOST.CONN} so the connection always goes out to the DNS name,
+            never the bare IP address, since the server certificate does
+            not validate against an IP.
+      vendor:
+        name: lpavlicek
+        version: '7.4-1'
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 1b6ce8ffc456424fb506e62b7b2d967a
+          name: 'LDAP: cn=Monitor raw statistics'
+          type: EXTERNAL
+          key: 'ldap_stats.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          delay: 5m
+          history: '0'
+          timeout: 15s
+          value_type: TEXT
+          description: |
+            Raw JSON output of ldap_stats.sh, parsed by the dependent items
+            below. Not meant to be read directly; history is disabled ('0')
+            since this is only a transport item for the dependent items.
+
+            Runs up to three separate ldapsearch queries against cn=Monitor
+            internally (operations, current connections, start time); each
+            section is included in the JSON only if its own query succeeded,
+            so a single slow/failing query does not blank out the others.
+            If everything fails (bad credentials, network error, or a
+            deployment problem such as an unset {$LDAP.BIND.PASSWORD} on
+            this host), the output is {"error": "<reason>"} instead and all
+            dependent items below simply keep their last known value.
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: 21f04c83bf9e4de7a8d88fd84cab7113
+          name: 'LDAP: Bind operations, ops/sec'
+          type: DEPENDENT
+          key: ldap.stats.ops.bind.rate
+          value_type: FLOAT
+          units: ops/s
+          description: 'Rate of completed LDAP Bind operations, derived from monitorOpCompleted under cn=Bind,cn=Operations,cn=Monitor.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.operations.bind
+              error_handler: DISCARD_VALUE
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'ldap_stats.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: 379916cf54bd4ce2bb6ac8f5a3615d7f
+          name: 'LDAP: Unbind operations, ops/sec'
+          type: DEPENDENT
+          key: ldap.stats.ops.unbind.rate
+          value_type: FLOAT
+          units: ops/s
+          description: 'Rate of completed LDAP Unbind operations, derived from monitorOpCompleted under cn=Unbind,cn=Operations,cn=Monitor.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.operations.unbind
+              error_handler: DISCARD_VALUE
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'ldap_stats.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: 22cd6a734d1d45a6996a33b0a986a3fb
+          name: 'LDAP: Search operations, ops/sec'
+          type: DEPENDENT
+          key: ldap.stats.ops.search.rate
+          value_type: FLOAT
+          units: ops/s
+          description: 'Rate of completed LDAP Search operations, derived from monitorOpCompleted under cn=Search,cn=Operations,cn=Monitor.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.operations.search
+              error_handler: DISCARD_VALUE
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'ldap_stats.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: 03c0ac589916491f8edecc33c1a65a1b
+          name: 'LDAP: Compare operations, ops/sec'
+          type: DEPENDENT
+          key: ldap.stats.ops.compare.rate
+          value_type: FLOAT
+          units: ops/s
+          description: 'Rate of completed LDAP Compare operations, derived from monitorOpCompleted under cn=Compare,cn=Operations,cn=Monitor.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.operations.compare
+              error_handler: DISCARD_VALUE
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'ldap_stats.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: a1a224f6cf4a40bb98671c825c77a191
+          name: 'LDAP: Modify operations, ops/sec'
+          type: DEPENDENT
+          key: ldap.stats.ops.modify.rate
+          value_type: FLOAT
+          units: ops/s
+          description: 'Rate of completed LDAP Modify operations, derived from monitorOpCompleted under cn=Modify,cn=Operations,cn=Monitor.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.operations.modify
+              error_handler: DISCARD_VALUE
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'ldap_stats.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: 4250514a3a4048db80d673dcfdd98653
+          name: 'LDAP: Modrdn operations, ops/sec'
+          type: DEPENDENT
+          key: ldap.stats.ops.modrdn.rate
+          value_type: FLOAT
+          units: ops/s
+          description: 'Rate of completed LDAP Modrdn (rename) operations, derived from monitorOpCompleted under cn=Modrdn,cn=Operations,cn=Monitor.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.operations.modrdn
+              error_handler: DISCARD_VALUE
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'ldap_stats.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: 3ecd0c9dc8344f17b4140c26f4b89ac1
+          name: 'LDAP: Add operations, ops/sec'
+          type: DEPENDENT
+          key: ldap.stats.ops.add.rate
+          value_type: FLOAT
+          units: ops/s
+          description: 'Rate of completed LDAP Add operations, derived from monitorOpCompleted under cn=Add,cn=Operations,cn=Monitor.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.operations.add
+              error_handler: DISCARD_VALUE
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'ldap_stats.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: e30519cac25d446aa678136ea1ebe22d
+          name: 'LDAP: Delete operations, ops/sec'
+          type: DEPENDENT
+          key: ldap.stats.ops.delete.rate
+          value_type: FLOAT
+          units: ops/s
+          description: 'Rate of completed LDAP Delete operations, derived from monitorOpCompleted under cn=Delete,cn=Operations,cn=Monitor.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.operations.delete
+              error_handler: DISCARD_VALUE
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'ldap_stats.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: 14d05819ffa842828247661a79240f6f
+          name: 'LDAP: Abandon operations, ops/sec'
+          type: DEPENDENT
+          key: ldap.stats.ops.abandon.rate
+          value_type: FLOAT
+          units: ops/s
+          description: 'Rate of completed LDAP Abandon operations, derived from monitorOpCompleted under cn=Abandon,cn=Operations,cn=Monitor.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.operations.abandon
+              error_handler: DISCARD_VALUE
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'ldap_stats.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: 5a01d23466a545c887f4d6cfc58771c3
+          name: 'LDAP: Extended operations, ops/sec'
+          type: DEPENDENT
+          key: ldap.stats.ops.extended.rate
+          value_type: FLOAT
+          units: ops/s
+          description: 'Rate of completed LDAP Extended operations, derived from monitorOpCompleted under cn=Extended,cn=Operations,cn=Monitor.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.operations.extended
+              error_handler: DISCARD_VALUE
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: 'ldap_stats.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: 870f23d672894e79b579d51147d03674
+          name: 'LDAP: current connections'
+          type: DEPENDENT
+          key: ldap.stats.connections.current
+          value_type: UNSIGNED
+          description: 'Current number of open connections, from monitorCounter under cn=Current,cn=Connections,cn=Monitor.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.connections_current
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'ldap_stats.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: 21e4188774af410995e23218212a4ce3
+          name: 'LDAP: slapd start time'
+          type: DEPENDENT
+          key: ldap.stats.start_time
+          value_type: CHAR
+          description: |
+            Server start time (monitorTimestamp under cn=Start,cn=Time,
+            cn=Monitor), reformatted from GeneralizedTime to
+            "YYYY-MM-DD HH:MM:SS". Purely informational - a recent value
+            is an indirect signal of a recent restart; there is no trigger
+            on this item.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.start_time
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'ldap_stats.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: 6bfbb8cc52c94e0aa1361dbc16ff94aa
+          name: 'LDAP: cn=Monitor collection error'
+          type: DEPENDENT
+          key: ldap.stats.error
+          value_type: CHAR
+          description: |
+            Surfaces the top-level "error" field from ldap_stats.sh's JSON
+            output, if present. ldap_stats.sh only sets this field when
+            ALL THREE cn=Monitor queries failed (parameter validation
+            error, missing ldapsearch binary, or a bind/network/timeout
+            failure affecting the whole check) - a single failing section
+            while the others succeed does not set it, since that case is
+            already handled by the per-section "Discard value" error
+            handling on the other dependent items.
+
+            Value is the error text when a total failure is happening, or
+            an empty string otherwise - unlike the other dependent items,
+            this one is not discarded on a missing JSON field, so it always
+            reflects the current state and clears itself automatically
+            once collection succeeds again.
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var data = JSON.parse(value);
+                    return data.error || '';
+                  } catch (e) {
+                    return '';
+                  }
+          master_item:
+            key: 'ldap_stats.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+          triggers:
+            - uuid: 882a7e1301d74f15bbd4d098867f1c49
+              expression: 'last(/LDAP Statistics/ldap.stats.error)<>""'
+              name: 'LDAP: cn=Monitor statistics collection failing on {HOST.NAME}'
+              priority: WARNING
+              opdata: '{ITEM.LASTVALUE}'
+              description: |
+                ldap_stats.sh could not collect any cn=Monitor data on this
+                host - the reason is shown in Operational data above.
+
+                Common causes: an unset or wrong {$LDAP.BIND.PASSWORD} macro
+                on this host, back-monitor not loaded or the bind account
+                not granted read access to cn=Monitor, the host unreachable
+                on {$LDAP.PORT}, or ldapsearch missing on the Zabbix
+                server/proxy.
+
+                While this is active, the operation-rate, connection-count,
+                and start-time items on this host are not being refreshed
+                and show their last known values rather than fresh data.
+              tags:
+                - tag: component
+                  value: ldap
+      tags:
+        - tag: class
+          value: application
+        - tag: target
+          value: ldap
+      macros:
+        - macro: '{$LDAP.PORT}'
+          value: '636'
+          description: 'TCP port used for LDAPS.'
+        - macro: '{$LDAP.BIND.DN}'
+          value: 'uid=monitor,ou=admin,dc=vse,dc=cz'
+          description: 'Bind DN used to read cn=Monitor (same account on every LDAP server; anonymous bind is disabled).'
+        - macro: '{$LDAP.BIND.PASSWORD}'
+          type: SECRET_TEXT
+          value: ''
+          description: 'Password for {$LDAP.BIND.DN}. Must be set per host - the demo LDAP server uses a different password than the others.'
+        - macro: '{$LDAP.BIND.TIMEOUT}'
+          value: '3'
+          description: 'Network and search time limit (seconds) passed to ldapsearch for each of the up to three cn=Monitor queries (-o nettimeout, -l).'
