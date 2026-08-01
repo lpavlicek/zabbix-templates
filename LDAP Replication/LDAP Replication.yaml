@@ -1,0 +1,256 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 974575fb51ba48538bab2d69ce8d1f71
+      template: 'LDAP Replication'
+      name: 'LDAP Replication'
+      description: |
+        OpenLDAP (slapd) syncrepl replication lag monitoring, based on
+        comparing the contextCSN of a replica (consumer) against the
+        contextCSN of the provider.
+        
+        Implemented as a Zabbix external check (runs on the Zabbix server
+        or proxy). Applies only to syncrepl consumers - not to the
+        provider itself and not to the standalone demo server, which does
+        not replicate.
+        
+        Topology assumption: a single provider, no multi-master or
+        chaining (confirmed for this environment). contextCSN is treated
+        as single-valued; if that ever changes, this template's parsing
+        (which takes the first contextCSN value found) would need revising.
+        
+        contextCSN only exists as an attribute of a database's own suffix
+        entry, not at an arbitrary replicated subtree. Here the provider's
+        database suffix is {$LDAP.REPL.PROVIDER.BASE} (dc=cz), of which
+        {$LDAP.BASE.DN} (dc=vse,dc=cz) - the replicas' own database suffix -
+        is the only subtree and the only thing that ever changes there
+        (confirmed with the LDAP administrator). Without that guarantee,
+        comparing contextCSN across two different suffixes would not be a
+        reliable lag measurement, since contextCSN reflects the latest
+        change anywhere in the whole database, not just within a syncrepl
+        search filter (searchbase="dc=vse,dc=cz" in this deployment's
+        syncrepl configuration).
+        
+        Log-based syncrepl error detection is intentionally NOT duplicated
+        here: slapd error-level log lines (including syncrepl errors) are
+        already covered by the "slapd: error messages in log" item in the
+        LDAP Service Health template.
+        
+        Requires:
+          - the "ldap_repl_lag.sh" script installed in the Zabbix
+            server/proxy's ExternalScripts directory;
+          - the "ldapsearch" binary (package ldap-utils) and GNU "date"
+            (coreutils) available on the Zabbix server/proxy;
+          - each host this template is linked to must have at least one
+            interface configured with its DNS name field filled in, for
+            the same {HOST.DNS}/TLS certificate reason as the other LDAP
+            external-check templates.
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: dfcb243f9faf459e8e68e23c6eee50cd
+          name: 'LDAP: provider contextCSN time'
+          type: DEPENDENT
+          key: ldap.repl.csn.provider_time
+          value_type: CHAR
+          description: 'The provider''s contextCSN timestamp ({$LDAP.REPL.PROVIDER.BASE} on {$LDAP.REPL.PROVIDER.HOST}), reformatted to "YYYY-MM-DD HH:MM:SS". Informational, used alongside the replica contextCSN time to sanity-check the lag value.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.provider_csn_time
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'ldap_repl_lag.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.REPL.PROVIDER.HOST},{$LDAP.BASE.DN},{$LDAP.REPL.PROVIDER.BASE},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: 871dc81f666c450d9c6889cce6810d83
+          name: 'LDAP: replica contextCSN time'
+          type: DEPENDENT
+          key: ldap.repl.csn.replica_time
+          value_type: CHAR
+          description: 'This replica''s own contextCSN timestamp ({$LDAP.BASE.DN}), reformatted to "YYYY-MM-DD HH:MM:SS". Informational, used alongside the provider contextCSN time to sanity-check the lag value.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.replica_csn_time
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'ldap_repl_lag.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.REPL.PROVIDER.HOST},{$LDAP.BASE.DN},{$LDAP.REPL.PROVIDER.BASE},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+        - uuid: 476fde1f9d0e42a194e49f82b825fe1a
+          name: 'LDAP: replication lag collection error'
+          type: DEPENDENT
+          key: ldap.repl.error
+          value_type: CHAR
+          description: |
+            Surfaces the top-level "error" field from ldap_repl_lag.sh's
+            JSON output, if present. Since a lag value needs both the
+            replica's and the provider's contextCSN, any failure here
+            (unreachable host, bind failure, missing/unparsable contextCSN,
+            timeout, or a deployment problem such as an unset
+            {$LDAP.BIND.PASSWORD} on this host) sets this field.
+            
+            Value is the error text on failure, or an empty string
+            otherwise - unlike the other dependent items above, this one
+            is not discarded on a missing JSON field, so it always
+            reflects the current state and clears itself automatically
+            once collection succeeds again.
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var data = JSON.parse(value);
+                    return data.error || '';
+                  } catch (e) {
+                    return '';
+                  }
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 2h
+          master_item:
+            key: 'ldap_repl_lag.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.REPL.PROVIDER.HOST},{$LDAP.BASE.DN},{$LDAP.REPL.PROVIDER.BASE},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+          triggers:
+            - uuid: d9090e2dd9474038b38ab6c2d695359d
+              expression: 'last(/LDAP Replication/ldap.repl.error)<>""'
+              name: 'LDAP: replication lag collection failing on {HOST.NAME}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: WARNING
+              description: |
+                ldap_repl_lag.sh could not compute a replication lag value
+                for this host - the reason is shown in Operational data
+                above.
+                
+                Common causes: an unset or wrong {$LDAP.BIND.PASSWORD} on
+                this host, the provider ({$LDAP.REPL.PROVIDER.HOST})
+                unreachable or its contextCSN unreadable, a missing
+                contextCSN on this replica (check the base DN
+                {$LDAP.BASE.DN} is correct), or ldapsearch/date missing on
+                the Zabbix server/proxy.
+                
+                While this is active, the lag-seconds item is not being
+                refreshed and shows its last known value rather than
+                current data - it does NOT necessarily mean replication
+                itself has stopped, only that this check could not
+                measure it.
+              tags:
+                - tag: component
+                  value: ldap
+        - uuid: af7c4572947a4891be8e6d79b3efa341
+          name: 'LDAP: replication lag, seconds'
+          type: DEPENDENT
+          key: ldap.repl.lag.seconds
+          units: s
+          description: |
+            Replication lag in seconds, computed as provider contextCSN
+            time minus this replica's own contextCSN time (floored at 0).
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.lag_seconds
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'ldap_repl_lag.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.REPL.PROVIDER.HOST},{$LDAP.BASE.DN},{$LDAP.REPL.PROVIDER.BASE},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          tags:
+            - tag: component
+              value: ldap
+          triggers:
+            - uuid: d60b865779ed4c50b7c99af7ba7e610e
+              expression: 'last(/LDAP Replication/ldap.repl.lag.seconds)>={$LDAP.REPL.LAG.HIGH}'
+              name: 'LDAP: replication lag is critically high on {HOST.NAME}'
+              opdata: 'Lag: {ITEM.LASTVALUE}s'
+              priority: HIGH
+              description: |
+                Replication lag has exceeded {$LDAP.REPL.LAG.HIGH} seconds.
+                Check slapd on both this host and the provider
+                ({$LDAP.REPL.PROVIDER.HOST}) - process health, connectivity,
+                and the slapd log (see LDAP Service Health) for syncrepl
+                errors.
+              tags:
+                - tag: component
+                  value: ldap
+            - uuid: d8f75c41b01144be911399986c79b412
+              expression: 'last(/LDAP Replication/ldap.repl.lag.seconds)>={$LDAP.REPL.LAG.WARN}'
+              name: 'LDAP: replication lag is elevated on {HOST.NAME}'
+              opdata: 'Lag: {ITEM.LASTVALUE}s'
+              priority: WARNING
+              description: |
+                Replication lag has exceeded {$LDAP.REPL.LAG.WARN} seconds.
+                May be transient (bulk update, brief network blip); check
+                whether it keeps growing or is already recovering before
+                escalating.
+              dependencies:
+                - name: 'LDAP: replication lag is critically high on {HOST.NAME}'
+                  expression: 'last(/LDAP Replication/ldap.repl.lag.seconds)>={$LDAP.REPL.LAG.HIGH}'
+              tags:
+                - tag: component
+                  value: ldap
+        - uuid: d6be12f7784e4767b3714d6a602d9009
+          name: 'LDAP: replication lag raw data'
+          type: EXTERNAL
+          key: 'ldap_repl_lag.sh[{HOST.DNS},{$LDAP.PORT},{$LDAP.REPL.PROVIDER.HOST},{$LDAP.BASE.DN},{$LDAP.REPL.PROVIDER.BASE},{$LDAP.BIND.DN},{$LDAP.BIND.PASSWORD},{$LDAP.BIND.TIMEOUT}]'
+          delay: 5m
+          history: '0'
+          value_type: TEXT
+          description: |
+            Raw JSON output of ldap_repl_lag.sh, parsed by the dependent
+            items below. Not meant to be read directly; history is
+            disabled ('0') since this is only a transport item.
+            
+            Queries this host's own contextCSN first, then the provider's
+            (see template description for why that order matters), and
+            reports the difference in seconds. Unlike LDAP Statistics,
+            there is no partial-success case here - a lag value needs both
+            endpoints, so any failure produces {"error": "<reason>"} and
+            all dependent items below simply keep their last known value,
+            except "LDAP: replication lag collection error" which reflects
+            the failure directly (see that item's description).
+          timeout: 15s
+          tags:
+            - tag: component
+              value: ldap
+      tags:
+        - tag: class
+          value: application
+        - tag: target
+          value: ldap
+      macros:
+        - macro: '{$LDAP.BASE.DN}'
+          value: 'dc=vse,dc=cz'
+          description: 'Base DN / database suffix on the replicas, where their own contextCSN is read from.'
+        - macro: '{$LDAP.BIND.DN}'
+          value: 'uid=monitor,ou=admin,dc=vse,dc=cz'
+          description: 'Bind DN used to read contextCSN on both the replica and the provider (same account everywhere; anonymous bind is disabled).'
+        - macro: '{$LDAP.BIND.PASSWORD}'
+          type: SECRET_TEXT
+          description: 'Password for {$LDAP.BIND.DN}. Must be set per host - the demo LDAP server uses a different password, but this template is not applied there anyway; the three replicas share the same replicated account.'
+        - macro: '{$LDAP.BIND.TIMEOUT}'
+          value: '3'
+          description: 'Network and search time limit (seconds) passed to ldapsearch for each of the two contextCSN queries (-o nettimeout, -l).'
+        - macro: '{$LDAP.PORT}'
+          value: '636'
+          description: 'TCP port used for LDAPS, for both the replica and the provider.'
+        - macro: '{$LDAP.REPL.LAG.HIGH}'
+          value: '1800'
+          description: 'Replication lag threshold in seconds for the High-severity trigger (default: 30 minutes).'
+        - macro: '{$LDAP.REPL.LAG.WARN}'
+          value: '300'
+          description: 'Replication lag threshold in seconds for the Warning-severity trigger (default: 5 minutes).'
+        - macro: '{$LDAP.REPL.PROVIDER.BASE}'
+          value: dc=cz
+          description: 'Base DN / database suffix on the provider, where its contextCSN is read from. Differs from {$LDAP.BASE.DN} because the provider''s database suffix is dc=cz, of which dc=vse,dc=cz is the only (replicated) subtree.'
+        - macro: '{$LDAP.REPL.PROVIDER.HOST}'
+          value: isis-appl1.vse.cz
+          description: 'DNS name of the syncrepl provider (primary LDAP server), same for all replicas.'
