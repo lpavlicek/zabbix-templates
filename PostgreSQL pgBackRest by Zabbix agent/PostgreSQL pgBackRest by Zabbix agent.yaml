@@ -30,7 +30,7 @@ zabbix_export:
         history, discovered dynamically via LLD.
       vendor:
         name: lpavlicek
-        version: '7.4-1'
+        version: '7.4-2'
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -292,7 +292,7 @@ zabbix_export:
               key: 'pgbackrest.backup.last.timestamp[{#REPO},{#TYPE}]'
               history: 90d
               units: unixtime
-              description: 'Unix timestamp (timestamp.stop) of the most recent {#TYPE} backup in repo {#REPO}.'
+              description: 'Unix timestamp (timestamp.stop) of the most recent {#TYPE} backup in repo {#REPO}. Purely informational/for graphing - the age trigger uses pgbackrest.backup.covered.timestamp instead (see there for why).'
               preprocessing:
                 - type: JAVASCRIPT
                   parameters:
@@ -313,15 +313,57 @@ zabbix_export:
               tags:
                 - tag: component
                   value: pgbackrest
+            - uuid: 9fe3bba3d7474e5fa497809352894216
+              name: 'pgBackRest: last {#TYPE}-or-full backup timestamp in repo {#REPO}'
+              type: DEPENDENT
+              key: 'pgbackrest.backup.covered.timestamp[{#REPO},{#TYPE}]'
+              history: 90d
+              units: unixtime
+              description: |
+                Unix timestamp of the most recent backup in repo {#REPO} that is either
+                type {#TYPE} or a full backup - a full backup covers the same data a
+                diff/incr would, so it counts as satisfying the {#TYPE} freshness
+                requirement too. Computed independently within this item's own
+                preprocessing (filtering the same raw pgbackrest info JSON for type
+                {#TYPE} OR full) rather than by referencing another item prototype's key
+                with a literal substituted in place of {#TYPE} - Zabbix's trigger
+                expression validator rejects that pattern on import. Used only by the
+                age trigger below; for the true last {#TYPE} backup timestamp see
+                pgbackrest.backup.last.timestamp instead.
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var data = JSON.parse(value);
+                      var backups = data[0].backup.filter(function(b) {
+                          return b.database['repo-key'] == {#REPO} && (b.type == '{#TYPE}' || b.type == 'full');
+                      });
+                      if (backups.length === 0) {
+                          return '';
+                      }
+                      backups.sort(function(a, b) {
+                          return b.timestamp.stop - a.timestamp.stop;
+                      });
+                      return backups[0].timestamp.stop;
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 12h
+              master_item:
+                key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+              tags:
+                - tag: component
+                  value: pgbackrest
               trigger_prototypes:
                 - uuid: 025e96e540aa46aaabd500784b2d5e32
-                  expression: '(now()-last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.backup.last.timestamp[{#REPO},{#TYPE}]))>{$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"} or nodata(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.backup.last.timestamp[{#REPO},{#TYPE}],{$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"})=1'
+                  expression: '(now()-last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.backup.covered.timestamp[{#REPO},{#TYPE}]))>{$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"} or nodata(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.backup.covered.timestamp[{#REPO},{#TYPE}],{$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"})=1'
                   name: 'pgBackRest: last {#TYPE} backup in repo {#REPO} is older than {$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"} (stanza {$PGBACKREST.STANZA})'
                   priority: AVERAGE
                   description: |
-                    No new {#TYPE} backup has been recorded in repository {#REPO} for
-                    longer than the configured maximum age (or no data has been received
-                    from pgbackrest info at all for that long).
+                    No backup that could satisfy the {#TYPE} freshness requirement in
+                    repository {#REPO} - neither a {#TYPE} backup nor a full backup
+                    (which covers the same data) - within the configured maximum age.
+                    For {#TYPE}=full this is simply the full backup age check. Also fires
+                    on prolonged nodata from pgbackrest info.
                   tags:
                     - tag: component
                       value: pgbackrest
