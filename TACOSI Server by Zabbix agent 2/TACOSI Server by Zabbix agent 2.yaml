@@ -1,0 +1,167 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: 968a0c6ab6df4dbbbb5c79d3ecb4cac8
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: dd83c007c7724f6cadbb3c3db1085af9
+      template: 'TACOSI Server by Zabbix agent 2'
+      name: 'TACOSI Server by Zabbix agent 2'
+      description: |
+        Monitors an internal TACACS+ server (tacosi), deployed via podman under systemd (quadlet).
+        
+        Checks:
+          1. TCP port {$TACOSI.PORT} is listening (tacosi listens on IPv4 only).
+          2. State of the systemd unit {$TACOSI.SERVICE.NAME}.
+          3. Application-level login test using /usr/local/bin/tacosi-client, evaluated by its exit code:
+             0 = definite success (PASS/PASS_ADD/PASS_REPL/SUCCESS)
+             1 = definite negative result (FAIL/ERROR/RESTART/FOLLOW/unknown status)
+             2 = transport/protocol error or invalid invocation (TRANSPORT_ERROR=... on stdout,
+                 or a bare usage/error message on stderr, e.g. "tacosi-client: unknown action ...")
+        
+        Requirements on the monitored host:
+          1. Zabbix agent 2 (systemd.unit.info[] is agent2-only).
+          2. A UserParameter that runs tacosi-client and reports its exit code, e.g. in
+             /etc/zabbix/zabbix_agent2.d/userparameter_tacosi.conf:
+        
+               UserParameter=tacosi.check[*],out=$(/usr/local/bin/tacosi-client -host "$1:$2" -secret "$3" -action login -user "$4" -password "$5" 2>&1); ec=$?; printf '%s\nEXIT_CODE=%s' "$out" "$ec"
+        
+             Restart zabbix-agent2 after adding this file.
+          3. tacosi-client has its own internal timeout of 5s. The application test item below uses an
+             item-level Timeout of 7s, so on the host:
+               - raise "Timeout" in zabbix_agent2.conf to at least 7-10s (default is 3s and would kill
+                 the check before tacosi-client's own timeout fires),
+               - in the Zabbix frontend under Administration > General > Timeouts, raise the "Zabbix agent"
+                 timeout ceiling to at least 7s as well, otherwise the item-level override is capped.
+          4. Set the host-level macros {$TACOSI.SECRET} and {$TACOSI.TEST.PASSWORD} (Secret text) - they
+             are empty by default and must be filled in per host.
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 3e7b2ba5a29044e3aa85cec7e5738a72
+          name: 'TCP port {$TACOSI.PORT} is listening'
+          key: 'net.tcp.listen[{$TACOSI.PORT}]'
+          description: 'Checks whether any process is listening on TCP port {$TACOSI.PORT} (tacosi listens on IPv4 only, but net.tcp.listen detects a listener regardless of IP version).'
+          valuemap:
+            name: 'TACOSI: service state'
+          tags:
+            - tag: component
+              value: network
+          triggers:
+            - uuid: 4d63e3fc27254097ac4c1f813def64ae
+              expression: 'last(/TACOSI Server by Zabbix agent 2/net.tcp.listen[{$TACOSI.PORT}])=0'
+              name: 'TACOSI: port {$TACOSI.PORT}/tcp is not listening'
+              priority: HIGH
+              manual_close: 'YES'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 2d670e90eb9f478a96a745dd87a91616
+          name: 'Systemd unit {$TACOSI.SERVICE.NAME} state'
+          key: 'systemd.unit.info[{$TACOSI.SERVICE.NAME}]'
+          value_type: TEXT
+          description: 'ActiveState of the systemd unit {$TACOSI.SERVICE.NAME}, e.g. active, inactive, failed, activating, deactivating. Requires Zabbix agent 2.'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          tags:
+            - tag: component
+              value: service
+          triggers:
+            - uuid: 648648a3c62e4d9290ea85af9a97149f
+              expression: 'last(/TACOSI Server by Zabbix agent 2/systemd.unit.info[{$TACOSI.SERVICE.NAME}])<>"active"'
+              name: 'TACOSI: systemd unit {$TACOSI.SERVICE.NAME} is not active'
+              opdata: 'State: {ITEM.LASTVALUE1}'
+              priority: HIGH
+              manual_close: 'YES'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: e6c1ea4f65354c038442e97fcd89a7f0
+          name: 'TACOSI application login test'
+          key: 'tacosi.check["{$TACOSI.HOST}","{$TACOSI.PORT}","{$TACOSI.SECRET}","{$TACOSI.TEST.USER}","{$TACOSI.TEST.PASSWORD}"]'
+          delay: 5m
+          history: 7d
+          value_type: TEXT
+          description: |
+            Runs tacosi-client as a synthetic login test and captures its combined stdout+stderr plus
+            an appended "EXIT_CODE=<n>" line (added by the host-side UserParameter, see template
+            description for the exact command). Evaluated by triggers below based on the exit code:
+              0 = success (not alerted)
+              1 = definite negative TACACS+ result (FAIL/ERROR/RESTART/FOLLOW/unknown status)
+              2 = transport/protocol error or invalid invocation
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          timeout: 7s
+          tags:
+            - tag: component
+              value: application
+          triggers:
+            - uuid: 51157e7963ac4e34b26958e544e1f5a8
+              expression: 'find(/TACOSI Server by Zabbix agent 2/tacosi.check["{$TACOSI.HOST}","{$TACOSI.PORT}","{$TACOSI.SECRET}","{$TACOSI.TEST.USER}","{$TACOSI.TEST.PASSWORD}"],,"regexp","EXIT_CODE=2$")=1'
+              name: 'TACOSI: application login test - transport/protocol error or invalid invocation'
+              opdata: '{ITEM.LASTVALUE1}'
+              priority: HIGH
+              description: 'tacosi-client exited with code 2: either a transport/protocol error (TRANSPORT_ERROR=... on stdout) or invalid invocation (bare usage/error message on stderr, e.g. unknown action). See opdata / item value for details.'
+              manual_close: 'YES'
+              dependencies:
+                - name: 'TACOSI: port {$TACOSI.PORT}/tcp is not listening'
+                  expression: 'last(/TACOSI Server by Zabbix agent 2/net.tcp.listen[{$TACOSI.PORT}])=0'
+                - name: 'TACOSI: systemd unit {$TACOSI.SERVICE.NAME} is not active'
+                  expression: 'last(/TACOSI Server by Zabbix agent 2/systemd.unit.info[{$TACOSI.SERVICE.NAME}])<>"active"'
+              tags:
+                - tag: scope
+                  value: availability
+            - uuid: 6ef3e1988bfc4b55903bf21a06781542
+              expression: 'find(/TACOSI Server by Zabbix agent 2/tacosi.check["{$TACOSI.HOST}","{$TACOSI.PORT}","{$TACOSI.SECRET}","{$TACOSI.TEST.USER}","{$TACOSI.TEST.PASSWORD}"],,"regexp","EXIT_CODE=1$")=1'
+              name: 'TACOSI: application login test failed (definite negative result)'
+              opdata: '{ITEM.LASTVALUE1}'
+              priority: HIGH
+              description: 'tacosi-client exited with code 1: the TACACS+ exchange completed but returned a negative status (FAIL/ERROR/RESTART/FOLLOW/unknown). See opdata / item value for the exact STATUS line.'
+              manual_close: 'YES'
+              dependencies:
+                - name: 'TACOSI: port {$TACOSI.PORT}/tcp is not listening'
+                  expression: 'last(/TACOSI Server by Zabbix agent 2/net.tcp.listen[{$TACOSI.PORT}])=0'
+                - name: 'TACOSI: systemd unit {$TACOSI.SERVICE.NAME} is not active'
+                  expression: 'last(/TACOSI Server by Zabbix agent 2/systemd.unit.info[{$TACOSI.SERVICE.NAME}])<>"active"'
+              tags:
+                - tag: scope
+                  value: availability
+      tags:
+        - tag: class
+          value: software
+        - tag: target
+          value: tacosi
+      macros:
+        - macro: '{$TACOSI.HOST}'
+          value: localhost
+          description: 'Hostname/IP tacosi-client connects to (without port).'
+        - macro: '{$TACOSI.PORT}'
+          value: '49'
+          description: 'TCP port tacosi listens on.'
+        - macro: '{$TACOSI.SECRET}'
+          type: SECRET_TEXT
+          description: 'TACACS+ shared secret used for the application login test. Must be set per host.'
+        - macro: '{$TACOSI.SERVICE.NAME}'
+          value: tacosi.service
+          description: 'Name of the systemd unit running tacosi.'
+        - macro: '{$TACOSI.TEST.PASSWORD}'
+          type: SECRET_TEXT
+          description: 'Password of the test user used for the synthetic login test. Must be set per host.'
+        - macro: '{$TACOSI.TEST.USER}'
+          value: zabbix
+          description: 'Username used for the synthetic login test.'
+      valuemaps:
+        - uuid: 423d2b0048e64994a0aa729eadd232b4
+          name: 'TACOSI: service state'
+          mappings:
+            - value: '0'
+              newvalue: 'Not listening'
+            - value: '1'
+              newvalue: Listening
