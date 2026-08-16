@@ -55,6 +55,22 @@ functionality and usage — they can be added later if needed.
 Discovery rules use Zabbix's `Prometheus to JSON` preprocessing together with `lld_macro_paths`,
 so new projects, queue types, or components appear automatically without editing the template.
 
+### Version check
+
+| Item | Source | Purpose |
+|---|---|---|
+| `Harbor: Get latest upstream release` | `GET https://api.github.com/repos/goharbor/harbor/releases/latest` | Master item, polled directly by the Zabbix server/proxy (no Zabbix agent needed). |
+| `Harbor: Latest upstream version` | `tag_name` from the item above | Normalized to `MAJOR.MINOR.PATCH`. |
+| `Harbor: Running version (Prometheus)` | `harbor_version` label of the `harbor_system_info` Prometheus metric | Normalized the same way (the build-hash suffix, e.g. `-a97e7b83`, is stripped). |
+
+Both version items are normalized by stripping a leading `v` and everything from the first `-`
+onward, so `v2.15.2-a97e7b83` and `v2.15.2` both become `2.15.2` and compare equal. This also means
+pre-release suffixes (e.g. `-rc1`) are stripped, so the comparison is MAJOR.MINOR.PATCH only.
+
+The GitHub item is polled once an hour, well within GitHub's unauthenticated rate limit (60
+requests/hour). The Zabbix server/proxy needs outbound internet access to `api.github.com` for
+this item to work.
+
 ### Triggers
 
 | Trigger | Severity | Condition |
@@ -66,6 +82,7 @@ so new projects, queue types, or components appear automatically without editing
 | Too many pending tasks in queue {#QUEUE_TYPE} | Warning | queue size > `{$HARBOR.QUEUE.SIZE.WARN}` for 10 min (per queue type) |
 | Queue {#QUEUE_TYPE} has stale pending tasks | Warning | oldest pending task age > `{$HARBOR.QUEUE.LATENCY.WARN}` for 10 min (per queue type) |
 | Project {#PROJECT} storage quota usage is high | Warning | quota used / quota limit > `{$HARBOR.QUOTA.USAGE.WARN}` % (skipped for unlimited quota, `-1`) |
+| Running version differs from the latest upstream release | Info | normalized running version != normalized latest upstream version (manual close, doesn't indicate direction — could mean an upgrade is available or that a pre-release/RC is running) |
 
 There are intentionally no "no data" triggers. The health-API and Prometheus-based triggers are
 independent of each other by design (they use different data sources), so both may fire for the
@@ -122,3 +139,5 @@ application-level health rather than duplicating that check.
 - Harbor health API: `GET /api/v2.0/health`
 - Harbor Prometheus metrics: enabled via `metric.enabled: true` in `harbor.yml` (default port
   `9090`, bound to `127.0.0.1` unless changed).
+- Latest Harbor release: https://github.com/goharbor/harbor/releases/latest (checked automatically
+  by the version-check items above).

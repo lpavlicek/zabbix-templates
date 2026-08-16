@@ -37,7 +37,7 @@ zabbix_export:
         See the Harbor documentation: https://goharbor.io/docs/
       vendor:
         name: lpavlicek
-        version: 7.4-1
+        version: 7.4-2
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -120,6 +120,74 @@ zabbix_export:
           tags:
             - tag: component
               value: metrics
+        - uuid: 042ac5b1a477488fbf168f6aa6eb979d
+          name: 'Harbor: Running version (Prometheus)'
+          type: DEPENDENT
+          key: harbor.metrics.version
+          value_type: CHAR
+          description: 'Running Harbor version, read from the harbor_version label of the harbor_system_info Prometheus metric and normalized the same way as harbor.release.upstream.version (build-hash suffix such as "-a97e7b83" stripped).'
+          preprocessing:
+            - type: PROMETHEUS_PATTERN
+              parameters:
+                - harbor_system_info
+                - label
+                - harbor_version
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var v = value.trim();
+                  if (v.charAt(0) === 'v' || v.charAt(0) === 'V') {
+                  	v = v.substring(1);
+                  }
+                  return v.split('-')[0];
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 12h
+          master_item:
+            key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+          tags:
+            - tag: component
+              value: version
+        - uuid: a0163a8ede384698a8c54d568ad5338e
+          name: 'Harbor: Get latest upstream release'
+          type: HTTP_AGENT
+          key: harbor.release.upstream.get
+          delay: 1d
+          history: '0'
+          value_type: TEXT
+          description: 'Raw JSON response of the GitHub API for the latest published Harbor release (GET https://api.github.com/repos/goharbor/harbor/releases/latest), polled directly by the Zabbix server/proxy - no Zabbix agent required. Used as the master item to compare the running Harbor version against the latest upstream release.'
+          url: 'https://api.github.com/repos/goharbor/harbor/releases/latest'
+          headers:
+            - name: Accept
+              value: application/vnd.github+json
+            - name: User-Agent
+              value: Zabbix-Harbor-template
+          tags:
+            - tag: component
+              value: version
+        - uuid: 8a27182a3711484b83bde68a0fdc554e
+          name: 'Harbor: Latest upstream version'
+          type: DEPENDENT
+          key: harbor.release.upstream.version
+          value_type: CHAR
+          description: 'Latest Harbor release version published on GitHub (tag_name), normalized to "MAJOR.MINOR.PATCH" (leading "v" and any "-suffix" after the first hyphen are stripped) so it can be compared directly with harbor.metrics.version.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.tag_name
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var v = value.trim();
+                  if (v.charAt(0) === 'v' || v.charAt(0) === 'V') {
+                  	v = v.substring(1);
+                  }
+                  return v.split('-')[0];
+          master_item:
+            key: harbor.release.upstream.get
+          tags:
+            - tag: component
+              value: version
         - uuid: bce8c3d4d6d746b491b060dc076ff27c
           name: 'Harbor: Projects total'
           type: DEPENDENT
@@ -506,3 +574,14 @@ zabbix_export:
               newvalue: 'Not running'
             - value: '1'
               newvalue: Running
+  triggers:
+    - uuid: 30208e32bf0a4d8aa62cac850081d0fe
+      expression: 'last(/Harbor by HTTP and Zabbix agent/harbor.metrics.version)<>last(/Harbor by HTTP and Zabbix agent/harbor.release.upstream.version)'
+      name: 'Harbor: Running version differs from the latest upstream release'
+      opdata: 'Running: {ITEM.LASTVALUE1}, latest upstream: {ITEM.LASTVALUE2}'
+      priority: INFO
+      description: 'The running Harbor version (from the harbor_system_info Prometheus metric) does not match the latest release published on GitHub (goharbor/harbor releases/latest). This usually means an upgrade is available, but it can also fire if the running instance is newer than the latest tagged release (e.g. a pre-release/RC build) - check both values before acting. Pre-release suffixes (e.g. "-rc1") are stripped during normalization, so this trigger only compares MAJOR.MINOR.PATCH.'
+      manual_close: 'YES'
+      tags:
+        - tag: scope
+          value: notice
