@@ -1,0 +1,508 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: 0271d53c3d3c4e0ca23ed8dafe0afe4a
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 9b868b56575d474990707c1c8b54eb5e
+      template: 'Harbor by HTTP and Zabbix agent'
+      name: 'Harbor by HTTP and Zabbix agent'
+      description: |
+        Monitoring template for Harbor (https://goharbor.io/) container registry.
+        
+        Combines two independent checks:
+        1. Health check via the Harbor REST API (GET {$HARBOR.URL}/api/v2.0/health), polled directly by
+           the Zabbix server/proxy with an HTTP agent item - no Zabbix agent required for this part.
+        2. Prometheus metrics scraped from the Harbor core metrics endpoint
+           (127.0.0.1:{$HARBOR.METRICS.PORT}/metrics), which by default only listens on localhost on the
+           Harbor host. This part requires a Zabbix agent (2) on the Harbor host with a UserParameter that
+           runs curl against the local metrics endpoint - see README.md for the exact setup.
+        
+        Selected Prometheus metrics cover:
+        - Functional health/reliability: harbor_health, harbor_up (per component), harbor_task_queue_size
+          and harbor_task_queue_latency (per job service queue type).
+        - Service usage/capacity: harbor_statistics_total_project_amount,
+          harbor_statistics_total_repo_amount, harbor_statistics_total_storage_consumption, and per-project
+          repositories/artifacts/quota usage/quota limit/artifact pulls.
+        
+        Setup:
+        1. Import this template and link it to the host representing the Harbor instance.
+        2. Set {$HARBOR.URL} to the base URL of Harbor (e.g. https://harbor.example.com).
+        3. Install a Zabbix agent on the Harbor host and add the UserParameter described in README.md,
+           then adjust {$HARBOR.METRICS.PORT} if the metrics port differs from the default 9090.
+        4. Adjust the threshold macros ({$HARBOR.QUEUE.SIZE.WARN}, {$HARBOR.QUEUE.LATENCY.WARN},
+           {$HARBOR.QUOTA.USAGE.WARN}) as needed, globally or per {#QUEUE_TYPE}/{#PROJECT} using macro
+           context, e.g. {$HARBOR.QUEUE.SIZE.WARN:"WEBHOOK"}.
+        
+        See the Harbor documentation: https://goharbor.io/docs/
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: a27207aee50544b18cfb7467d57d47f1
+          name: 'Harbor: Get health'
+          type: HTTP_AGENT
+          key: harbor.health.get
+          delay: 2m
+          history: '0'
+          value_type: TEXT
+          description: 'Raw JSON response of the Harbor health API (GET /api/v2.0/health), polled directly by the Zabbix server/proxy - no Zabbix agent required for this item. Used as the master item for the overall status and the per-component health discovery. SSL certificate validation is intentionally left at the Zabbix default (disabled) - certificate expiry is monitored by a separate template.'
+          url: '{$HARBOR.URL}/api/v2.0/health'
+          tags:
+            - tag: component
+              value: health
+        - uuid: dc0b65c8911440eea028991791d224b5
+          name: 'Harbor: Overall health status'
+          type: DEPENDENT
+          key: harbor.health.status
+          history: 7d
+          value_type: CHAR
+          description: 'Overall Harbor health status reported by the health API ("healthy" or "unhealthy").'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.status
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: harbor.health.get
+          tags:
+            - tag: component
+              value: health
+          triggers:
+            - uuid: 61219623b89445dfa819cfa9fd3970e9
+              expression: 'last(/Harbor by HTTP and Zabbix agent/harbor.health.status)<>"healthy"'
+              name: 'Harbor: Overall health status is not healthy'
+              opdata: 'Current status: {ITEM.LASTVALUE1}'
+              priority: HIGH
+              description: 'The Harbor health API (/api/v2.0/health) reports an overall status other than "healthy". Check the per-component health items to see which component is affected.'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 127e3a86d28546f1b5b12be6f2da83a7
+          name: 'Harbor: Running status (Prometheus)'
+          type: DEPENDENT
+          key: harbor.metrics.health
+          value_type: FLOAT
+          description: 'Value of the harbor_health Prometheus metric (1 - Harbor reports itself as running, 0 - not running).'
+          valuemap:
+            name: 'Harbor: running status'
+          preprocessing:
+            - type: PROMETHEUS_PATTERN
+              parameters:
+                - harbor_health
+                - value
+                - ''
+          master_item:
+            key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+          tags:
+            - tag: component
+              value: health
+          triggers:
+            - uuid: e52d8067550f42ad9dd7434966eaf934
+              expression: 'last(/Harbor by HTTP and Zabbix agent/harbor.metrics.health)=0'
+              name: 'Harbor: Reports not running (Prometheus metrics)'
+              priority: HIGH
+              description: 'The harbor_health Prometheus metric reports 0 (not running).'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 51ea41df550046218eb8dfd6e2ca4bde
+          name: 'Harbor: Get Prometheus metrics'
+          key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+          delay: 2m
+          history: '0'
+          value_type: TEXT
+          description: 'Raw Prometheus exposition text from the Harbor core metrics endpoint (127.0.0.1:{$HARBOR.METRICS.PORT}/metrics), fetched via a UserParameter on the Harbor host because the endpoint only listens on localhost - see README.md for the required UserParameter configuration. Used as the master item for all Prometheus-derived items and discovery rules below.'
+          tags:
+            - tag: component
+              value: metrics
+        - uuid: bce8c3d4d6d746b491b060dc076ff27c
+          name: 'Harbor: Projects total'
+          type: DEPENDENT
+          key: harbor.statistics.projects.total
+          value_type: FLOAT
+          description: 'Total number of projects in Harbor (harbor_statistics_total_project_amount).'
+          preprocessing:
+            - type: PROMETHEUS_PATTERN
+              parameters:
+                - harbor_statistics_total_project_amount
+                - value
+                - ''
+          master_item:
+            key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+          tags:
+            - tag: component
+              value: usage
+        - uuid: 884b9ccccb7e4b65a58d10a1f3197448
+          name: 'Harbor: Repositories total'
+          type: DEPENDENT
+          key: harbor.statistics.repositories.total
+          value_type: FLOAT
+          description: 'Total number of repositories in Harbor (harbor_statistics_total_repo_amount).'
+          preprocessing:
+            - type: PROMETHEUS_PATTERN
+              parameters:
+                - harbor_statistics_total_repo_amount
+                - value
+                - ''
+          master_item:
+            key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+          tags:
+            - tag: component
+              value: usage
+        - uuid: aa5b9d5bf28e468492f094c0e94313f9
+          name: 'Harbor: Storage used total'
+          type: DEPENDENT
+          key: harbor.statistics.storage.total
+          value_type: FLOAT
+          units: B
+          description: 'Total storage space used by Harbor across all projects (harbor_statistics_total_storage_consumption).'
+          preprocessing:
+            - type: PROMETHEUS_PATTERN
+              parameters:
+                - harbor_statistics_total_storage_consumption
+                - value
+                - ''
+          master_item:
+            key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+          tags:
+            - tag: component
+              value: usage
+        - uuid: 2e791a14b5db4a9c8d4d09a856606776
+          name: 'Harbor: Scheduled tasks'
+          type: DEPENDENT
+          key: harbor.task.scheduled.total
+          value_type: FLOAT
+          description: 'Total number of currently scheduled (periodic/cron) jobs in the Harbor job service (harbor_task_scheduled_total).'
+          preprocessing:
+            - type: PROMETHEUS_PATTERN
+              parameters:
+                - harbor_task_scheduled_total
+                - value
+                - ''
+          master_item:
+            key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+          tags:
+            - tag: component
+              value: jobservice
+      discovery_rules:
+        - uuid: a4f92ee422ac47148b4e9820570c146d
+          name: 'Harbor: Health components discovery'
+          type: DEPENDENT
+          key: harbor.health.components.discovery
+          description: 'Discovers the components reported by the Harbor health API (e.g. core, database, jobservice, portal, redis, registry, registryctl, trivy).'
+          item_prototypes:
+            - uuid: 39c3358534c34823a7533069cef6da0b
+              name: 'Harbor: Component {#COMPONENT} health status'
+              type: DEPENDENT
+              key: 'harbor.health.component.status[{#COMPONENT}]'
+              value_type: CHAR
+              description: 'Health status of the {#COMPONENT} component as reported by the Harbor health API.'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var data = JSON.parse(value).components;
+                      for (var i = 0; i < data.length; i++) {
+                      	if (data[i].name === '{#COMPONENT}') {
+                      		return data[i].status;
+                      	}
+                      }
+                      return 'unknown';
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: harbor.health.get
+              tags:
+                - tag: component
+                  value: health
+              trigger_prototypes:
+                - uuid: cd4bf940bd034a4b8c9cabc8bd39e267
+                  expression: 'last(/Harbor by HTTP and Zabbix agent/harbor.health.component.status[{#COMPONENT}])<>"healthy"'
+                  name: 'Harbor: Component {#COMPONENT} is not healthy'
+                  opdata: 'Current status: {ITEM.LASTVALUE1}'
+                  priority: HIGH
+                  description: 'The {#COMPONENT} component is reported as not healthy by the Harbor health API.'
+                  tags:
+                    - tag: scope
+                      value: availability
+          master_item:
+            key: harbor.health.get
+          lld_macro_paths:
+            - lld_macro: '{#COMPONENT}'
+              path: $.name
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.components
+        - uuid: ee9ec48d6e79445abe18ae63e1b2d905
+          name: 'Harbor: Prometheus component discovery'
+          type: DEPENDENT
+          key: harbor.metrics.components.discovery
+          description: 'Discovers Harbor components exposed via the harbor_up Prometheus metric.'
+          item_prototypes:
+            - uuid: 3323ebdb68c94bbfb82805c366337384
+              name: 'Harbor: Component {#COMPONENT} up (Prometheus)'
+              type: DEPENDENT
+              key: 'harbor.metrics.component.up[{#COMPONENT}]'
+              value_type: FLOAT
+              description: 'Value of the harbor_up Prometheus metric for the {#COMPONENT} component (1 - up, 0 - down).'
+              valuemap:
+                name: 'Harbor: running status'
+              preprocessing:
+                - type: PROMETHEUS_PATTERN
+                  parameters:
+                    - 'harbor_up{component="{#COMPONENT}"}'
+                    - value
+                    - ''
+              master_item:
+                key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+              tags:
+                - tag: component
+                  value: health
+              trigger_prototypes:
+                - uuid: 48d018a8506846dd938e03cf4fdbdd0a
+                  expression: 'last(/Harbor by HTTP and Zabbix agent/harbor.metrics.component.up[{#COMPONENT}])=0'
+                  name: 'Harbor: Component {#COMPONENT} is down (Prometheus)'
+                  priority: HIGH
+                  description: 'The harbor_up Prometheus metric reports 0 (down) for the {#COMPONENT} component.'
+                  tags:
+                    - tag: scope
+                      value: availability
+          master_item:
+            key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+          lld_macro_paths:
+            - lld_macro: '{#COMPONENT}'
+              path: $.labels.component
+          preprocessing:
+            - type: PROMETHEUS_TO_JSON
+              parameters:
+                - harbor_up
+        - uuid: 536e3039f6c24b858fbb1e70500d017e
+          name: 'Harbor: Project discovery'
+          type: DEPENDENT
+          key: harbor.metrics.projects.discovery
+          description: 'Discovers Harbor projects exposed via the harbor_project_repo_total Prometheus metric.'
+          item_prototypes:
+            - uuid: ddb0634bd8fc47d3a89f1512d8ff6dd6
+              name: 'Harbor: Project {#PROJECT} - artifacts'
+              type: DEPENDENT
+              key: 'harbor.metrics.project.artifacts[{#PROJECT}]'
+              value_type: FLOAT
+              description: 'Total number of artifacts in the {#PROJECT} Harbor project, summed across all artifact types (harbor_project_artifact_total).'
+              preprocessing:
+                - type: PROMETHEUS_TO_JSON
+                  parameters:
+                    - 'harbor_project_artifact_total{project_name="{#PROJECT}"}'
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var valueArr = JSON.parse(value);
+                      return valueArr.reduce(function (acc, obj) {
+                      	return acc + parseFloat(obj['value']);
+                      }, 0);
+              master_item:
+                key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+              tags:
+                - tag: component
+                  value: usage
+                - tag: project
+                  value: '{#PROJECT}'
+            - uuid: 5b4a71bcbee94b96b6de48adef5c650e
+              name: 'Harbor: Project {#PROJECT} - artifact pulls'
+              type: DEPENDENT
+              key: 'harbor.metrics.project.pulls[{#PROJECT}]'
+              value_type: FLOAT
+              description: 'Cumulative number of artifact pulls from the {#PROJECT} Harbor project since the Harbor core process started (harbor_artifact_pulled).'
+              preprocessing:
+                - type: PROMETHEUS_PATTERN
+                  parameters:
+                    - 'harbor_artifact_pulled{project_name="{#PROJECT}"}'
+                    - value
+                    - ''
+              master_item:
+                key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+              tags:
+                - tag: component
+                  value: usage
+                - tag: project
+                  value: '{#PROJECT}'
+            - uuid: 5c3ef340bea1401e97ff86e5b0a2990b
+              name: 'Harbor: Project {#PROJECT} - quota limit'
+              type: DEPENDENT
+              key: 'harbor.metrics.project.quota.limit[{#PROJECT}]'
+              value_type: FLOAT
+              units: B
+              description: 'Storage quota limit configured for the {#PROJECT} Harbor project (harbor_project_quota_byte). A value of -1 means unlimited.'
+              preprocessing:
+                - type: PROMETHEUS_PATTERN
+                  parameters:
+                    - 'harbor_project_quota_byte{project_name="{#PROJECT}"}'
+                    - value
+                    - ''
+              master_item:
+                key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+              tags:
+                - tag: component
+                  value: usage
+                - tag: project
+                  value: '{#PROJECT}'
+            - uuid: f833b13ae9f142bbb924167f20fca9f5
+              name: 'Harbor: Project {#PROJECT} - quota used'
+              type: DEPENDENT
+              key: 'harbor.metrics.project.quota.used[{#PROJECT}]'
+              value_type: FLOAT
+              units: B
+              description: 'Storage quota currently used by the {#PROJECT} Harbor project (harbor_project_quota_usage_byte).'
+              preprocessing:
+                - type: PROMETHEUS_PATTERN
+                  parameters:
+                    - 'harbor_project_quota_usage_byte{project_name="{#PROJECT}"}'
+                    - value
+                    - ''
+              master_item:
+                key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+              tags:
+                - tag: component
+                  value: usage
+                - tag: project
+                  value: '{#PROJECT}'
+            - uuid: 711c2a84ef964c7fb92dfbcfc2754b59
+              name: 'Harbor: Project {#PROJECT} - repositories'
+              type: DEPENDENT
+              key: 'harbor.metrics.project.repositories[{#PROJECT}]'
+              value_type: FLOAT
+              description: 'Number of repositories in the {#PROJECT} Harbor project (harbor_project_repo_total).'
+              preprocessing:
+                - type: PROMETHEUS_PATTERN
+                  parameters:
+                    - 'harbor_project_repo_total{project_name="{#PROJECT}"}'
+                    - value
+                    - ''
+              master_item:
+                key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+              tags:
+                - tag: component
+                  value: usage
+                - tag: project
+                  value: '{#PROJECT}'
+          trigger_prototypes:
+            - uuid: 6252e546bd3f4799b220c17600d2b44d
+              expression: 'last(/Harbor by HTTP and Zabbix agent/harbor.metrics.project.quota.limit[{#PROJECT}])<>-1 and last(/Harbor by HTTP and Zabbix agent/harbor.metrics.project.quota.used[{#PROJECT}])/last(/Harbor by HTTP and Zabbix agent/harbor.metrics.project.quota.limit[{#PROJECT}])*100>{$HARBOR.QUOTA.USAGE.WARN}'
+              name: 'Harbor: Project {#PROJECT} storage quota usage is high'
+              priority: WARNING
+              description: 'Storage quota usage of the {#PROJECT} project exceeded {$HARBOR.QUOTA.USAGE.WARN}%. Projects with an unlimited quota (-1) are excluded.'
+              tags:
+                - tag: scope
+                  value: capacity
+          master_item:
+            key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+          lld_macro_paths:
+            - lld_macro: '{#PROJECT}'
+              path: $.labels.project_name
+          preprocessing:
+            - type: PROMETHEUS_TO_JSON
+              parameters:
+                - harbor_project_repo_total
+        - uuid: 484cd70df823403b916c32bf1a350627
+          name: 'Harbor: Job service queue discovery'
+          type: DEPENDENT
+          key: harbor.metrics.queue.discovery
+          description: 'Discovers Harbor job service task queue types exposed via the harbor_task_queue_size Prometheus metric (e.g. GARBAGE_COLLECTION, IMAGE_SCAN, REPLICATION, RETENTION, WEBHOOK).'
+          item_prototypes:
+            - uuid: 89aae8eac0e54bcba685c26257b1f753
+              name: 'Harbor: Queue {#QUEUE_TYPE} - oldest pending task age'
+              type: DEPENDENT
+              key: 'harbor.metrics.queue.latency[{#QUEUE_TYPE}]'
+              value_type: FLOAT
+              units: s
+              description: 'How long ago the oldest pending task in the {#QUEUE_TYPE} job service queue was enqueued (harbor_task_queue_latency).'
+              preprocessing:
+                - type: PROMETHEUS_PATTERN
+                  parameters:
+                    - 'harbor_task_queue_latency{type="{#QUEUE_TYPE}"}'
+                    - value
+                    - ''
+              master_item:
+                key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+              tags:
+                - tag: component
+                  value: jobservice
+              trigger_prototypes:
+                - uuid: 55f7cadd2be74c8dbc036d142cb91dae
+                  expression: 'min(/Harbor by HTTP and Zabbix agent/harbor.metrics.queue.latency[{#QUEUE_TYPE}],10m)>{$HARBOR.QUEUE.LATENCY.WARN:"{#QUEUE_TYPE}"}'
+                  name: 'Harbor: Queue {#QUEUE_TYPE} has stale pending tasks'
+                  priority: WARNING
+                  description: 'The oldest pending task in the {#QUEUE_TYPE} job service queue has been waiting longer than {$HARBOR.QUEUE.LATENCY.WARN:"{#QUEUE_TYPE}"} seconds for the last 10 minutes.'
+                  tags:
+                    - tag: scope
+                      value: performance
+            - uuid: 02a02df9f8ff4b6197250cc9205f3f3c
+              name: 'Harbor: Queue {#QUEUE_TYPE} - pending tasks'
+              type: DEPENDENT
+              key: 'harbor.metrics.queue.size[{#QUEUE_TYPE}]'
+              value_type: FLOAT
+              description: 'Number of tasks currently waiting in the {#QUEUE_TYPE} job service queue (harbor_task_queue_size).'
+              preprocessing:
+                - type: PROMETHEUS_PATTERN
+                  parameters:
+                    - 'harbor_task_queue_size{type="{#QUEUE_TYPE}"}'
+                    - value
+                    - ''
+              master_item:
+                key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+              tags:
+                - tag: component
+                  value: jobservice
+              trigger_prototypes:
+                - uuid: 8bed747295f24cf6ac18a4c36622ec47
+                  expression: 'min(/Harbor by HTTP and Zabbix agent/harbor.metrics.queue.size[{#QUEUE_TYPE}],10m)>{$HARBOR.QUEUE.SIZE.WARN:"{#QUEUE_TYPE}"}'
+                  name: 'Harbor: Too many pending tasks in queue {#QUEUE_TYPE}'
+                  priority: WARNING
+                  description: 'The {#QUEUE_TYPE} job service queue has had more than {$HARBOR.QUEUE.SIZE.WARN:"{#QUEUE_TYPE}"} pending tasks for the last 10 minutes.'
+                  tags:
+                    - tag: scope
+                      value: performance
+          master_item:
+            key: 'harbor.metrics.raw[{$HARBOR.METRICS.PORT}]'
+          lld_macro_paths:
+            - lld_macro: '{#QUEUE_TYPE}'
+              path: $.labels.type
+          preprocessing:
+            - type: PROMETHEUS_TO_JSON
+              parameters:
+                - harbor_task_queue_size
+      tags:
+        - tag: class
+          value: software
+        - tag: target
+          value: harbor
+      macros:
+        - macro: '{$HARBOR.METRICS.PORT}'
+          value: '9090'
+          description: 'Port of the Harbor core Prometheus metrics endpoint (metric_port in harbor.yml). Reachable only from localhost on the Harbor host, see README.md.'
+        - macro: '{$HARBOR.QUEUE.LATENCY.WARN}'
+          value: '300'
+          description: 'Warning threshold in seconds for how long the oldest pending task has been waiting in a Harbor job service queue ({#QUEUE_TYPE}). Supports per-queue macro context.'
+        - macro: '{$HARBOR.QUEUE.SIZE.WARN}'
+          value: '50'
+          description: 'Warning threshold for the number of pending tasks in a Harbor job service queue ({#QUEUE_TYPE}). Override per queue type with a macro context, e.g. {$HARBOR.QUEUE.SIZE.WARN:"WEBHOOK"}.'
+        - macro: '{$HARBOR.QUOTA.USAGE.WARN}'
+          value: '90'
+          description: 'Warning threshold in percent for storage quota usage of a Harbor project ({#PROJECT}). Projects with unlimited quota (-1) are excluded.'
+        - macro: '{$HARBOR.URL}'
+          value: 'https://harbor.example.com'
+          description: 'Base URL of Harbor (scheme + host, no trailing slash). Used by the HTTP agent health-check item.'
+      valuemaps:
+        - uuid: 59f6d369119e418195d8531471c6022b
+          name: 'Harbor: running status'
+          mappings:
+            - value: '0'
+              newvalue: 'Not running'
+            - value: '1'
+              newvalue: Running
