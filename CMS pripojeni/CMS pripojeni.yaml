@@ -1,0 +1,220 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 07d2d98ef0a74e22ad2d69b0350db243
+      template: 'CMS pripojeni'
+      name: 'CMS pripojeni'
+      description: |
+        Monitoring připojení do CMS sítě (Centrální místo služeb) včetně:
+          - Dostupnosti tunelů a cílových IP adres
+          - Funkčnosti DNS resolveru pro DNS jména cms2.cz
+
+        Dostupnost www.cms2.cz přes proxy server na portu 8888 je testována samostatně
+        šablonou "Http proxy proxy.vse.cz" (položky "Proxy: port 8888" a
+        "Proxy: port 8888, rule allow www.cms2.cz") na hostu proxy.vse.cz.
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 88d7b89bfc3241c985c4dc2d2daacc75
+          name: 'CMS: fping - tunnel from vse to cesnet availability'
+          key: 'fping.host[10.0.172.45]'
+          delay: 5m
+          value_type: FLOAT
+          units: ms
+          description: 'Test dostupnosti IP adresy tunelu z VSE (fg-cluster) do CESNETu. IP adresa je na naší straně.'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '^.+ is alive \((.+) ms\)'
+                - \1
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '-1'
+          tags:
+            - tag: component
+              value: cms
+          triggers:
+            - uuid: 48141b5d414e4c709ef6b883d1e6726d
+              expression: 'last(/CMS pripojeni/fping.host[10.0.172.45]) < 0'
+              name: 'CMS: tunnel from vse to cesnet is unreachable'
+              priority: AVERAGE
+              description: 'Fping nevrátil RTT, tunel z vse do cesnetu je pravděpodobně nedostupný. Testuje se IP adresa na fg-cluster (na naší straně).'
+              tags:
+                - tag: component
+                  value: cms
+        - uuid: 3555d722344b466185225dc3ec2541d9
+          name: 'CMS: fping - tunnel from cesnet to dia/nakit availability'
+          key: 'fping.host[10.240.245.129]'
+          delay: 5m
+          value_type: FLOAT
+          units: ms
+          description: |
+            Test dostupnosti IP adresy tunelu 10.240.245.128/30 z CESNETu do datového centra se základními registry (do CMS). IP adresa je na straně datového centra.
+            Existuje ještě druhý tunel 10.240.117.128/30.
+            První adresa z podsítě je na straně CMS.
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '^.+ is alive \((.+) ms\)'
+                - \1
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '-1'
+          tags:
+            - tag: component
+              value: cms
+          triggers:
+            - uuid: 4ad35f2807e4400bb87aa0c53b9eefdd
+              expression: 'last(/CMS pripojeni/fping.host[10.240.245.129]) < 0'
+              name: 'CMS: tunnel from cesnet to cms is unreachable'
+              priority: AVERAGE
+              description: |
+                Fping nevrátil RTT, tunel z cesnetu do cms je pravděpodobně nedostupný.
+                Existuje ještě druhý tunel mezi cesnetem a cms, nevím stav.
+              tags:
+                - tag: component
+                  value: cms
+        - uuid: 7c79bdb653fe417ebd30b6e294ddef63
+          name: 'CMS: fping - firewall availability in DC1'
+          key: 'fping.host[10.250.143.182]'
+          delay: 5m
+          value_type: FLOAT
+          units: ms
+          description: |
+            Test dostupnosti virtuálního firewallu (VFW) Subjektu v CMS (ping na IP adresu)
+                DC1 - 10.250.143.182
+                DC2 - 10.250.207.182
+            V případě nefunkčnosti je nutné udělat Traceroute na uvedené IP adresy a poslat na pozadavky.CMS@nakit.cz
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '^.+ is alive \((.+) ms\)'
+                - \1
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '-1'
+          tags:
+            - tag: component
+              value: cms
+          triggers:
+            - uuid: 870c80a122cb41678452fab16cf772c4
+              expression: 'last(/CMS pripojeni/fping.host[10.250.143.182]) > 100'
+              name: 'CMS: virtual firewall in DC1 high latency'
+              priority: WARNING
+              description: 'RTT do DC1 je > 100ms'
+              tags:
+                - tag: component
+                  value: cms
+            - uuid: 9128967d8bd842d08744a88bf490cd9d
+              expression: 'last(/CMS pripojeni/fping.host[10.250.143.182]) < 0'
+              name: 'CMS: virtual firewall in DC1 is unreachable'
+              priority: AVERAGE
+              description: 'Fping nevrátil RTT, DC1 pro základní registry je pravděpodobně nedostupné'
+              tags:
+                - tag: component
+                  value: cms
+        - uuid: f5f09f1e5e524682b81d1a2f9ea8fd78
+          name: 'CMS: fping - firewall availability in DC2'
+          key: 'fping.host[10.250.207.182]'
+          delay: 5m
+          value_type: FLOAT
+          units: ms
+          description: |
+            Test dostupnosti virtuálního firewallu (VFW) Subjektu v CMS (ping na IP adresu)
+                DC1 - 10.250.143.182
+                DC2 - 10.250.207.182
+            V případě nefunkčnosti je nutné udělat Traceroute na uvedené IP adresy a poslat na pozadavky.CMS@nakit.cz
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '^.+ is alive \((.+) ms\)'
+                - \1
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '-1'
+          tags:
+            - tag: component
+              value: cms
+          triggers:
+            - uuid: 530005ef008d42018ed765f242ec91fe
+              expression: 'last(/CMS pripojeni/fping.host[10.250.207.182]) > 100'
+              name: 'CMS: virtual firewall in DC2 high latency'
+              priority: WARNING
+              description: 'RTT do DC2 je > 100ms'
+              tags:
+                - tag: component
+                  value: cms
+            - uuid: 827fc080bbf04d9ead45e8d29c475361
+              expression: 'last(/CMS pripojeni/fping.host[10.250.207.182]) < 0'
+              name: 'CMS: virtual firewall in DC2 is unreachable'
+              priority: AVERAGE
+              description: 'Fping nevrátil RTT, DC2 pro základní registry je pravděpodobně nedostupné'
+              tags:
+                - tag: component
+                  value: cms
+        - uuid: 5d86689a85644dbebb8e60e6a0cfa04f
+          name: 'CMS: dns resolver - record A for www.cms2.cz'
+          key: 'net.dns.record[127.0.0.1,www.cms2.cz,A]'
+          delay: 5m
+          value_type: CHAR
+          description: 'DNS dotaz na www.cms2.cz'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '.*\sA\s+([0-9\.]+)'
+                - \1
+              error_handler: CUSTOM_VALUE
+              error_handler_params: ''
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          tags:
+            - tag: component
+              value: cms
+          triggers:
+            - uuid: 076beb2c5dbc4fbcb7362b68fa651faf
+              expression: 'length(last(/CMS pripojeni/net.dns.record[127.0.0.1,www.cms2.cz,A])) = 0 or last(/CMS pripojeni/net.dns.record[127.0.0.1,www.cms2.cz,A]) <> "{$CMS_WWW_IP}"'
+              name: 'CMS: resolver does not return IP address "{$CMS_WWW_IP}" for www.cms2.cz'
+              priority: AVERAGE
+              description: |
+                Resolvující nameserver pro www.cms2.cz nevrací "{$CMS_WWW_IP}". Možné důvody:
+                - nefunguje lokální dns resolver,
+                - není spojení na nameserver v CMS,
+                - změnila se IP adresa pro www.cms2.cz
+                Vracená adresa: {ITEM.VALUE}
+              dependencies:
+                - name: 'CMS: broken DNS resolver on {HOST.DNS}'
+                  expression: 'last(/CMS pripojeni/net.dns[127.0.0.1,vse.cz])=0'
+              tags:
+                - tag: component
+                  value: cms
+        - uuid: d75363683e9e451094672ac60fa8007e
+          name: 'CMS: dns resolver - response for vse.cz SOA'
+          key: 'net.dns[127.0.0.1,vse.cz]'
+          delay: 5m
+          description: 'zda DNS resolver zná doménu vse.cz (SOA record)'
+          tags:
+            - tag: component
+              value: cms
+          triggers:
+            - uuid: 13dba98bf02e4ca899a969d7109b2e9a
+              expression: 'last(/CMS pripojeni/net.dns[127.0.0.1,vse.cz])=0'
+              name: 'CMS: broken DNS resolver on {HOST.DNS}'
+              priority: AVERAGE
+              description: 'Nepodařilo se získat dns odpověď přes UDP - dotaz na SOA domény vse.cz.'
+              tags:
+                - tag: component
+                  value: cms
+      tags:
+        - tag: class
+          value: network
+        - tag: component
+          value: cms
+        - tag: target
+          value: cms
+      macros:
+        - macro: '{$CMS_WWW_IP}'
+          value: 10.254.8.26
+          description: 'Očekávaná IP adresa pro www.cms2.cz'
