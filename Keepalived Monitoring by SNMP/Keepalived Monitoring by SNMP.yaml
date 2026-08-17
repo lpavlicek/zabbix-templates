@@ -1,0 +1,349 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 9b7f43002f924e1f932dcd8ba9857fca
+      template: 'Keepalived Monitoring by SNMP'
+      name: 'Keepalived Monitoring by SNMP'
+      description: |
+        Keepalived monitoring template for Zabbix 7.4
+
+        This template monitors Keepalived VRRP instances via SNMP. It provides:
+        - VRRP instance state monitoring (INIT, BACKUP, MASTER, FAULT)
+        - Automatic discovery of VRRP instances
+        - Failover detection and alerting
+        - Flapping detection (frequent state changes)
+        - Version tracking
+
+        Requirements:
+        - Keepalived with SNMP support enabled (--enable-snmp)
+        - SNMP daemon (snmpd) running on monitored host
+        - Keepalived must be started AFTER snmpd for proper SNMP communication
+        - SNMP community configured (default: public)
+
+        OID Base: 1.3.6.1.4.1.9586.100.5 (KEEPALIVED-MIB)
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 4fef9c03b7b641ca979c58db06b01472
+          name: 'Keepalived: version'
+          type: SNMP_AGENT
+          snmp_oid: 'get[1.3.6.1.4.1.9586.100.5.1.1.0]'
+          key: keepalived.version
+          delay: 1h
+          value_type: CHAR
+          description: |
+            Keepalived daemon version string (e.g., "v2.2.8").
+
+            This item tracks the installed Keepalived version. Version changes typically indicate:
+            - Software upgrade or downgrade
+            - Package reinstallation
+            - Keepalived daemon restart with different binary
+
+            OID: 1.3.6.1.4.1.9586.100.5.1.1.0 (version)
+
+            Monitoring this helps with:
+            - Change tracking and audit trails
+            - Ensuring consistent versions across HA pairs
+
+            Note: This value is read-only and set by the Keepalived daemon at startup.
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          tags:
+            - tag: component
+              value: keepalived
+          triggers:
+            - uuid: fa9732e68cd748a4b5492b3271ce336b
+              expression: 'change(/Keepalived Monitoring by SNMP/keepalived.version)<>0'
+              name: 'Keepalived: changed version'
+              opdata: 'New version: {ITEM.LASTVALUE1}'
+              priority: INFO
+              description: |
+                Keepalived version has changed from previous value.
+                New version: {ITEM.LASTVALUE1}
+
+                This typically indicates:
+                - Software package was upgraded or downgraded
+                - Keepalived binary was replaced
+                - System was restored from backup with different version
+
+                Action required:
+                1. Verify the version change was intentional
+                2. Check release notes for breaking changes
+                3. Ensure all nodes in HA cluster run the same version
+                4. Test failover functionality after upgrade
+                5. Review configuration compatibility with new version
+
+                Important: Version mismatches between master and backup nodes can cause:
+                - VRRP protocol incompatibilities
+                - Unexpected failover behavior
+                - Split-brain scenarios
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: keepalived
+      discovery_rules:
+        - uuid: 56c139c9e9e644f89f5f6a1d4250e23f
+          name: 'VRRP Instance Discovery'
+          type: SNMP_AGENT
+          snmp_oid: 'discovery[{#VRRP_NAME}, 1.3.6.1.4.1.9586.100.5.2.3.1.2]'
+          key: vrrp.instance.discovery
+          delay: 1h
+          description: |
+            Automatic discovery of configured VRRP instances via SNMP.
+
+            This LLD rule discovers all active VRRP instances configured in Keepalived by walking the SNMP vrrpInstanceTable.
+
+            OID: 1.3.6.1.4.1.9586.100.5.2.3.1.2 (vrrpInstanceName)
+
+            Discovery interval: 1 hour (configurable via delay parameter)
+
+            Discovered macros:
+            - {#VRRP_NAME}: VRRP instance name (from keepalived.conf, e.g., "VI_1", "PROD_VIP")
+            - {#SNMPINDEX}: SNMP table index for this instance (used in subsequent OID queries)
+
+            What triggers new discoveries:
+            - New VRRP instance added to keepalived.conf
+            - Keepalived configuration reload
+            - Keepalived daemon restart
+
+            Notes:
+            - Deleted instances will remain in Zabbix until lost resource retention period expires
+            - Discovery only runs when Keepalived is running and SNMP is accessible
+            - If no instances are discovered, verify SNMP connectivity and Keepalived status
+          item_prototypes:
+            - uuid: 7723dd7793854ec2a433dbb964a41e7a
+              name: 'VRRP Instance {#VRRP_NAME}: State mismatch'
+              type: CALCULATED
+              key: 'vrrp.state.mismatch[{#SNMPINDEX}]'
+              params: 'last(//vrrp.state[{#SNMPINDEX}])<>last(//vrrp.wantedstate[{#SNMPINDEX}])'
+              description: 'Detects when actual state differs from wanted state.'
+              valuemap:
+                name: 'state mismatch'
+              tags:
+                - tag: component
+                  value: keepalived
+              trigger_prototypes:
+                - uuid: 41a648ed29c44a03b2a13373f6d99a86
+                  expression: 'min(/Keepalived Monitoring by SNMP/vrrp.state.mismatch[{#SNMPINDEX}], 6m)'
+                  name: 'VRRP Instance {#VRRP_NAME}: State mismatch'
+                  priority: WARNING
+                  description: 'The active state differs from the wanted state by more than 5 minutes.'
+                  dependencies:
+                    - name: 'VRRP Instance {#VRRP_NAME}: Reporting FAULT state'
+                      expression: 'last(/Keepalived Monitoring by SNMP/vrrp.state[{#SNMPINDEX}])=3'
+                    - name: 'VRRP Instance {#VRRP_NAME}: Reporting INIT state for more than 2 minutes'
+                      expression: 'min(/Keepalived Monitoring by SNMP/vrrp.state[{#SNMPINDEX}],170)=0'
+                    - name: 'VRRP Instance {#VRRP_NAME}: Reporting UNKNOWN state'
+                      expression: 'last(/Keepalived Monitoring by SNMP/vrrp.state[{#SNMPINDEX}])=4'
+                  tags:
+                    - tag: component
+                      value: keepalived
+            - uuid: d8c4371f8ad0410f89d6d9803f2bbb3b
+              name: 'VRRP Instance {#VRRP_NAME}: State'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.4.1.9586.100.5.2.3.1.4.{#SNMPINDEX}]'
+              key: 'vrrp.state[{#SNMPINDEX}]'
+              description: |
+                Current operational state of VRRP instance "{#VRRP_NAME}".
+
+                OID: 1.3.6.1.4.1.9586.100.5.2.3.1.4.{#SNMPINDEX} (vrrpInstanceState)
+
+                Possible states:
+                0 = INIT    - Instance is initializing (startup phase)
+                1 = BACKUP  - Instance is in standby mode, monitoring master
+                2 = MASTER  - Instance is active, owning the VIP and responding to traffic
+                3 = FAULT   - Instance detected a failure (health check failed, interface down)
+                4 = UNKNOWN - Status unavailable (SNMP communication error or keepalived internal error)
+
+                State transitions:
+                Normal startup:    INIT -> BACKUP -> (election) -> MASTER or stays BACKUP
+                Planned failover:  MASTER -> BACKUP (on lower priority node)
+                Failure detected:  MASTER -> FAULT -> BACKUP
+                Recovery:          FAULT -> BACKUP -> (election) -> MASTER
+
+                What each state means:
+
+                INIT (0):
+                - Instance is starting up
+                - Reading configuration
+                - Waiting for network interfaces to be ready
+                - Should transition to BACKUP within 30-60 seconds
+                - Extended INIT state (>2 min) indicates network or config issues
+
+                BACKUP (1):
+                - Normal state for standby node
+                - Listening for VRRP advertisements from MASTER
+                - Ready to take over if MASTER fails
+                - Will become MASTER if priority is higher or MASTER is silent
+
+                MASTER (2):
+                - Active state, owns VIP
+                - Sending VRRP advertisements
+                - Handling production traffic
+                - Will transition to BACKUP if preempted by higher priority node
+
+                FAULT (3):
+                - Critical issue detected
+                - VIP has been released
+                - Common causes:
+                  * Health check script returned failure
+                  * Network interface went down (link loss)
+                  * Configuration validation failed
+                  * IP address conflict detected
+                  * Incorrect broadcast address in config
+                - Requires immediate investigation
+
+                UNKNOWN (4):
+                - Zabbix cannot determine state
+                - Possible causes:
+                  * SNMP communication failure (snmpd not responding)
+                  * Keepalived process crashed or stopped
+                  * snmpd started before keepalived (requires restart order: snmpd first, then keepalived)
+                  * Network connectivity issues to monitored host
+                  * SNMP community string mismatch
+
+                Monitoring tips:
+                - In HA pair: one node should be MASTER, other BACKUP
+                - Both nodes showing MASTER indicates split-brain (serious issue!)
+                - Both nodes showing BACKUP indicates VIP is down (service outage!)
+                - Frequent MASTER<->BACKUP transitions indicate flapping (network instability)
+              valuemap:
+                name: VrrpState
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '4'
+              tags:
+                - tag: component
+                  value: keepalived
+              trigger_prototypes:
+                - uuid: f8ddd5c7829443a8a678844ee25320e3
+                  expression: 'last(/Keepalived Monitoring by SNMP/vrrp.state[{#SNMPINDEX}])=3'
+                  name: 'VRRP Instance {#VRRP_NAME}: Reporting FAULT state'
+                  priority: HIGH
+                  description: |
+                    VRRP instance "{#VRRP_NAME}" has entered FAULT state - this is a critical condition.
+
+                    Common causes of FAULT state:
+                    1. Health check script failure
+                    2. Network interface down
+                    3. Configuration errors
+                    4. Premature startup (race condition)
+                    5. Resource exhaustion (memory, open files, ...)
+
+                    See logs on server.
+                  tags:
+                    - tag: component
+                      value: keepalived
+                - uuid: 0630328061044a4fad1f43de0a664fd6
+                  expression: 'min(/Keepalived Monitoring by SNMP/vrrp.state[{#SNMPINDEX}],170)=0'
+                  name: 'VRRP Instance {#VRRP_NAME}: Reporting INIT state for more than 2 minutes'
+                  priority: AVERAGE
+                  description: |
+                    VRRP instance "{#VRRP_NAME}" has been in INIT state for more than 2 minutes.
+
+                    Common causes:
+                    1. Network interface not ready
+                    2. Keepalived waiting for snmpd
+                    3. Configuration syntax errors
+                    4. Permission issues
+                    5. Slow system startup
+
+                    Check the logs on the server.
+                  tags:
+                    - tag: component
+                      value: keepalived
+                - uuid: e3a1c3867d264b3a9d406eb39b496760
+                  expression: 'last(/Keepalived Monitoring by SNMP/vrrp.state[{#SNMPINDEX}])=4'
+                  name: 'VRRP Instance {#VRRP_NAME}: Reporting UNKNOWN state'
+                  priority: WARNING
+                  description: |
+                    Cannot determine state of VRRP instance "{#VRRP_NAME}" - SNMP communication failure or Keepalived internal error.
+
+                    This can be caused by:
+                    1. SNMP daemon not responding
+                    2. Keepalived not communicating with snmpd
+                    3. Keepalived process issues
+                    4. Network connectivity problems
+                    5. SNMP community string mismatch
+
+                    Critical startup sequence issue:
+                    IMPORTANT: snmpd MUST be started BEFORE keepalived!
+                  tags:
+                    - tag: component
+                      value: keepalived
+                - uuid: 2855df5fff124ccf8bf97fbb0a871ba3
+                  expression: 'change(/Keepalived Monitoring by SNMP/vrrp.state[{#SNMPINDEX}])<> 0'
+                  name: 'VRRP Instance {#VRRP_NAME}: State changed'
+                  opdata: '-> {ITEM.LASTVALUE1}'
+                  priority: INFO
+                  description: |
+                    VRRP instance "{#VRRP_NAME}" has changed state to {ITEM.LASTVALUE1}.
+
+                    This is an informational alert - manual close required after acknowledging the change.
+                  manual_close: 'YES'
+                  tags:
+                    - tag: component
+                      value: keepalived
+            - uuid: 7e528237a21647ceb6b7552fc0c47500
+              name: 'VRRP Instance {#VRRP_NAME}: WantedState'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.4.1.9586.100.5.2.3.1.6.{#SNMPINDEX}]'
+              key: 'vrrp.wantedstate[{#SNMPINDEX}]'
+              description: |
+                Desired/target state configured by administrator for VRRP instance "{#VRRP_NAME}".
+
+                OID: 1.3.6.1.4.1.9586.100.5.2.3.1.6.{#SNMPINDEX} (vrrpInstanceWantedState)
+
+                Possible values:
+                1 = BACKUP  - Administrator wants instance to stay in BACKUP
+                2 = MASTER  - Administrator wants instance to become/stay MASTER
+              valuemap:
+                name: VrrpState
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '4'
+              tags:
+                - tag: component
+                  value: keepalived
+      tags:
+        - tag: class
+          value: software
+        - tag: component
+          value: keepalived
+        - tag: target
+          value: keepalived
+      valuemaps:
+        - uuid: bacd802ec4034b6383d92fc05a0c0e26
+          name: 'state mismatch'
+          mappings:
+            - value: '0'
+              newvalue: 'no'
+            - value: '1'
+              newvalue: 'yes'
+        - uuid: c2a8fc1c4ae244f0b8730acd8f04913e
+          name: VrrpState
+          mappings:
+            - value: '0'
+              newvalue: init
+            - value: '1'
+              newvalue: backup
+            - value: '2'
+              newvalue: master
+            - value: '3'
+              newvalue: fault
+            - value: '4'
+              newvalue: unknown
