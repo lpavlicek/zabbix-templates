@@ -217,6 +217,8 @@ The external script sends JSON data to Zabbix trapper:
 
 ### WARNING Priority
 - **SSH non-publickey authentication detected**: Authentication methods other than publickey are available
+  (depends on **SSH password authentication detected** — suppressed while that HIGH-priority problem is active,
+  to avoid duplicate alerts for the same root cause)
 
 ### INFO Priority
 - **No data for 12 hours**: External script hasn't sent data for 12 hours
@@ -298,4 +300,4 @@ lpavlicek
 
 ## Version
 
-7.4-3
+7.4-4

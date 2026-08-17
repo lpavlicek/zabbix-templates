@@ -19,7 +19,7 @@ zabbix_export:
         - SSHFP klíče se neshodují: HIGH
       vendor:
         name: lpavlicek
-        version: 7.4-3
+        version: 7.4-4
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -157,6 +157,9 @@ zabbix_export:
               name: 'SSH non-publickey authentication detected'
               priority: WARNING
               description: 'SSH podporuje jinou autentizaci než publickey na {ITEM.LASTVALUE:ssh.non_publickey_auth.count} IP adresách. Detaily: {ITEM.LASTVALUE:ssh.non_publickey_auth.details}'
+              dependencies:
+                - name: 'SSH password authentication detected'
+                  expression: 'last(/SSH authentication methods/ssh.password_auth.count)>0'
               tags:
                 - tag: component
                   value: ssh
