@@ -10,7 +10,7 @@ zabbix_export:
       description: 'A Zabbix 7.4 template for monitoring the [unbound](https://nlnetlabs.nl/projects/unbound/about/) recursive DNS resolver. Statistics are collected via `unbound-control stats_noreset` and converted to JSON by a Perl helper script, enabling efficient dependent-item collection with a single external call every 5 minutes.'
       vendor:
         name: lpavlicek
-        version: 7.4-1
+        version: 7.4-2
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -1234,6 +1234,23 @@ zabbix_export:
           tags:
             - tag: component
               value: config
+        - uuid: 4ff9c84ed51043fca96f4b0c7fe0f485
+          name: 'Unbound: Request list queue max usage'
+          type: CALCULATED
+          key: unbound.request_list_max_usage
+          delay: 2m
+          value_type: FLOAT
+          trends: '0'
+          units: '%'
+          params: 'last(//unbound.total_requestlist_max) / last(//unbound.option.num-queries-per-thread) * 100'
+          description: |
+            Calculated percentage of DNS Unbound request list utilization.
+            Used for dashboard Gauge visualization only (thresholds: 50% warning, 80% critical).
+            Formula: last(request_list_max) / last(num_queries_per_thread) * 100
+            Trends: Do not store (display-only metric, no historical analysis needed).
+          tags:
+            - tag: component
+              value: performance
         - uuid: 16ce320163234d42978600ddd25b588d
           name: 'Unbound: RRset cache entries'
           type: DEPENDENT
