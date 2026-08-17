@@ -30,7 +30,7 @@ zabbix_export:
         history, discovered dynamically via LLD.
       vendor:
         name: lpavlicek
-        version: '7.4-2'
+        version: 7.4-2
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -214,6 +214,60 @@ zabbix_export:
               tags:
                 - tag: component
                   value: pgbackrest
+            - uuid: 9fe3bba3d7474e5fa497809352894216
+              name: 'pgBackRest: last {#TYPE}-or-full backup timestamp in repo {#REPO}'
+              type: DEPENDENT
+              key: 'pgbackrest.backup.covered.timestamp[{#REPO},{#TYPE}]'
+              history: 90d
+              units: unixtime
+              description: |
+                Unix timestamp of the most recent backup in repo {#REPO} that is either
+                type {#TYPE} or a full backup - a full backup covers the same data a
+                diff/incr would, so it counts as satisfying the {#TYPE} freshness
+                requirement too. Computed independently within this item's own
+                preprocessing (filtering the same raw pgbackrest info JSON for type
+                {#TYPE} OR full) rather than by referencing another item prototype's key
+                with a literal substituted in place of {#TYPE} - Zabbix's trigger
+                expression validator rejects that pattern on import. Used only by the
+                age trigger below; for the true last {#TYPE} backup timestamp see
+                pgbackrest.backup.last.timestamp instead.
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var data = JSON.parse(value);
+                      var backups = data[0].backup.filter(function(b) {
+                          return b.database['repo-key'] == {#REPO} && (b.type == '{#TYPE}' || b.type == 'full');
+                      });
+                      if (backups.length === 0) {
+                          return '';
+                      }
+                      backups.sort(function(a, b) {
+                          return b.timestamp.stop - a.timestamp.stop;
+                      });
+                      return backups[0].timestamp.stop;
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 12h
+              master_item:
+                key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
+              tags:
+                - tag: component
+                  value: pgbackrest
+              trigger_prototypes:
+                - uuid: 025e96e540aa46aaabd500784b2d5e32
+                  expression: '(now()-last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.backup.covered.timestamp[{#REPO},{#TYPE}]))>{$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"} or nodata(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.backup.covered.timestamp[{#REPO},{#TYPE}],{$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"})=1'
+                  name: 'pgBackRest: last {#TYPE} backup in repo {#REPO} is older than {$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"} (stanza {$PGBACKREST.STANZA})'
+                  priority: AVERAGE
+                  description: |
+                    No backup that could satisfy the {#TYPE} freshness requirement in
+                    repository {#REPO} - neither a {#TYPE} backup nor a full backup
+                    (which covers the same data) - within the configured maximum age.
+                    For {#TYPE}=full this is simply the full backup age check. Also fires
+                    on prolonged nodata from pgbackrest info.
+                  tags:
+                    - tag: component
+                      value: pgbackrest
             - uuid: 71d554dcd2ef4a738d96ad14a5511808
               name: 'pgBackRest: last {#TYPE} backup age in repo {#REPO}'
               type: CALCULATED
@@ -313,60 +367,6 @@ zabbix_export:
               tags:
                 - tag: component
                   value: pgbackrest
-            - uuid: 9fe3bba3d7474e5fa497809352894216
-              name: 'pgBackRest: last {#TYPE}-or-full backup timestamp in repo {#REPO}'
-              type: DEPENDENT
-              key: 'pgbackrest.backup.covered.timestamp[{#REPO},{#TYPE}]'
-              history: 90d
-              units: unixtime
-              description: |
-                Unix timestamp of the most recent backup in repo {#REPO} that is either
-                type {#TYPE} or a full backup - a full backup covers the same data a
-                diff/incr would, so it counts as satisfying the {#TYPE} freshness
-                requirement too. Computed independently within this item's own
-                preprocessing (filtering the same raw pgbackrest info JSON for type
-                {#TYPE} OR full) rather than by referencing another item prototype's key
-                with a literal substituted in place of {#TYPE} - Zabbix's trigger
-                expression validator rejects that pattern on import. Used only by the
-                age trigger below; for the true last {#TYPE} backup timestamp see
-                pgbackrest.backup.last.timestamp instead.
-              preprocessing:
-                - type: JAVASCRIPT
-                  parameters:
-                    - |
-                      var data = JSON.parse(value);
-                      var backups = data[0].backup.filter(function(b) {
-                          return b.database['repo-key'] == {#REPO} && (b.type == '{#TYPE}' || b.type == 'full');
-                      });
-                      if (backups.length === 0) {
-                          return '';
-                      }
-                      backups.sort(function(a, b) {
-                          return b.timestamp.stop - a.timestamp.stop;
-                      });
-                      return backups[0].timestamp.stop;
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 12h
-              master_item:
-                key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
-              tags:
-                - tag: component
-                  value: pgbackrest
-              trigger_prototypes:
-                - uuid: 025e96e540aa46aaabd500784b2d5e32
-                  expression: '(now()-last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.backup.covered.timestamp[{#REPO},{#TYPE}]))>{$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"} or nodata(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.backup.covered.timestamp[{#REPO},{#TYPE}],{$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"})=1'
-                  name: 'pgBackRest: last {#TYPE} backup in repo {#REPO} is older than {$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"} (stanza {$PGBACKREST.STANZA})'
-                  priority: AVERAGE
-                  description: |
-                    No backup that could satisfy the {#TYPE} freshness requirement in
-                    repository {#REPO} - neither a {#TYPE} backup nor a full backup
-                    (which covers the same data) - within the configured maximum age.
-                    For {#TYPE}=full this is simply the full backup age check. Also fires
-                    on prolonged nodata from pgbackrest info.
-                  tags:
-                    - tag: component
-                      value: pgbackrest
           master_item:
             key: 'pgbackrest.info[{$PGBACKREST.STANZA}]'
           preprocessing:
@@ -555,6 +555,24 @@ zabbix_export:
           value: application
         - tag: target
           value: pgbackrest
+      macros:
+        - macro: '{$PGBACKREST.BACKUP.MAX.AGE:"diff"}'
+          value: 26h
+          description: 'Maximum allowed age of the last diff backup before raising a trigger. Override per host/repo type as needed.'
+        - macro: '{$PGBACKREST.BACKUP.MAX.AGE:"full"}'
+          value: 8d
+          description: 'Maximum allowed age of the last full backup before raising a trigger. Override to e.g. 26h on hosts doing daily full backups.'
+        - macro: '{$PGBACKREST.BACKUP.MAX.AGE:"incr"}'
+          value: 26h
+          description: 'Maximum allowed age of the last incr backup before raising a trigger. Override per host/repo type as needed.'
+        - macro: '{$PGBACKREST.CHECK.LOG.DIR}'
+          value: /var/log/pgbackrest
+          description: 'Directory where the pgbackrest-check@<stanza>.service writes its output log file.'
+        - macro: '{$PGBACKREST.CHECK.MAX.AGE}'
+          value: 32h
+          description: 'Maximum allowed age of the pgbackrest-check log file before raising a trigger (daily timer + safety margin).'
+        - macro: '{$PGBACKREST.STANZA}'
+          description: 'Name of the pgbackrest stanza to monitor on this host. Mandatory, no default - must be set per host.'
       valuemaps:
         - uuid: 63432f098e7a4ed387df426fa6c6ce35
           name: 'pgBackRest: boolean check result'
@@ -582,24 +600,6 @@ zabbix_export:
               newvalue: 'Requested backup not found'
             - value: '99'
               newvalue: 'Other error (see status message)'
-      macros:
-        - macro: '{$PGBACKREST.BACKUP.MAX.AGE:"diff"}'
-          value: 26h
-          description: 'Maximum allowed age of the last diff backup before raising a trigger. Override per host/repo type as needed.'
-        - macro: '{$PGBACKREST.BACKUP.MAX.AGE:"full"}'
-          value: 8d
-          description: 'Maximum allowed age of the last full backup before raising a trigger. Override to e.g. 26h on hosts doing daily full backups.'
-        - macro: '{$PGBACKREST.BACKUP.MAX.AGE:"incr"}'
-          value: 26h
-          description: 'Maximum allowed age of the last incr backup before raising a trigger. Override per host/repo type as needed.'
-        - macro: '{$PGBACKREST.CHECK.LOG.DIR}'
-          value: /var/log/pgbackrest
-          description: 'Directory where the pgbackrest-check@<stanza>.service writes its output log file.'
-        - macro: '{$PGBACKREST.CHECK.MAX.AGE}'
-          value: 32h
-          description: 'Maximum allowed age of the pgbackrest-check log file before raising a trigger (daily timer + safety margin).'
-        - macro: '{$PGBACKREST.STANZA}'
-          description: 'Name of the pgbackrest stanza to monitor on this host. Mandatory, no default - must be set per host.'
   triggers:
     - uuid: d00cb1dad681405ca610eeda92e0f606
       expression: 'last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.stanza.status.code)<>0 and last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.stanza.status.message)<>""'
