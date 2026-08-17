@@ -11,7 +11,7 @@ zabbix_export:
         Monitoring připojení do CMS sítě (Centrální místo služeb) včetně:
           - Dostupnosti tunelů a cílových IP adres
           - Funkčnosti DNS resolveru pro DNS jména cms2.cz
-
+        
         Dostupnost www.cms2.cz přes proxy server na portu 8888 je testována samostatně
         šablonou "Http proxy proxy.vse.cz" (položky "Proxy: port 8888" a
         "Proxy: port 8888, rule allow www.cms2.cz") na hostu proxy.vse.cz.
@@ -166,7 +166,6 @@ zabbix_export:
                 - '.*\sA\s+([0-9\.]+)'
                 - \1
               error_handler: CUSTOM_VALUE
-              error_handler_params: ''
             - type: DISCARD_UNCHANGED_HEARTBEAT
               parameters:
                 - 1h
