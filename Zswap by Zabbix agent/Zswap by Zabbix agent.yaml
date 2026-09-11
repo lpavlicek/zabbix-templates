@@ -1,0 +1,472 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 691ba3b097f54098b140bc1a12419b35
+      template: 'Zswap by Zabbix agent'
+      name: 'Zswap by Zabbix agent'
+      description: |
+        Monitors Linux zswap (compressed swap cache) on Debian 13 / Ubuntu 24.04+ and newer kernels.
+        
+        Reads sysfs module parameters (enabled, max_pool_percent) directly via Zabbix agent -
+        these files are world-readable, no elevated privileges required.
+        
+        Reads debugfs statistics (pool_total_size, stored_pages, written_back_pages, pool_limit_hit)
+        via /usr/local/bin/zswap_stats.sh, invoked through sudo, because /sys/kernel/debug is not
+        readable by the zabbix user by default. See README.md for the required host-side setup
+        (script, sudoers rule, UserParameter file).
+        
+        Derived metrics (compression ratio, pool usage vs. configured limit) are computed by
+        Zabbix calculated items. The pool usage item additionally requires an existing
+        vm.memory.size[total] item on the host (e.g. from "Linux by Zabbix agent"); without it,
+        that one item will show as unsupported, the rest of the template is unaffected.
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: c9543127510b427599d24e9eb7b9ad15
+          name: 'Zswap: enabled'
+          key: 'vfs.file.contents[/sys/module/zswap/parameters/enabled]'
+          delay: 1h
+          history: 7d
+          description: 'Whether zswap is currently enabled (sysfs module parameter, world-readable, no root required).'
+          valuemap:
+            name: 'Zswap: enabled state'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'return value.trim() === ''Y'' ? 1 : 0;'
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 12h
+          tags:
+            - tag: component
+              value: memory
+        - uuid: 4620954320f24135a988bc7b80edd08a
+          name: 'Zswap: max pool percent'
+          key: 'vfs.file.contents[/sys/module/zswap/parameters/max_pool_percent]'
+          delay: 1h
+          history: 7d
+          units: '%'
+          description: 'Configured maximum size of the zswap pool as a percentage of total RAM (sysfs module parameter).'
+          preprocessing:
+            - type: TRIM
+              parameters:
+                - \r\n
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 12h
+          tags:
+            - tag: component
+              value: memory
+        - uuid: bf9758469bb04475909ac6e7470a2bbd
+          name: 'Zswap: compression ratio'
+          type: CALCULATED
+          key: zswap.compression_ratio
+          delay: 5m
+          history: 7d
+          value_type: FLOAT
+          params: |
+            last(//zswap.stats.stored_pages) * last(//zswap.stats.page_size)
+            / ( last(//zswap.stats.pool_total_size) + ( last(//zswap.stats.pool_total_size) = 0 ) )
+          description: 'Uncompressed size divided by compressed size of data currently held in the zswap pool. Higher is better.'
+          tags:
+            - tag: component
+              value: memory
+        - uuid: 2dfbee15a94f4ee4be134e8b84f8a4a4
+          name: 'Zswap: pool usage (% of configured limit)'
+          type: CALCULATED
+          key: zswap.pool_usage_percent
+          delay: 5m
+          history: 7d
+          value_type: FLOAT
+          units: '%'
+          params: |
+            last(//zswap.stats.pool_total_size) * 100
+            / (
+                ( last(//vm.memory.size[total]) * last(//vfs.file.contents[/sys/module/zswap/parameters/max_pool_percent]) / 100 )
+                + ( ( last(//vm.memory.size[total]) * last(//vfs.file.contents[/sys/module/zswap/parameters/max_pool_percent]) / 100 ) = 0 )
+              )
+          description: |
+            How full the zswap pool is relative to the configured limit (max_pool_percent % of total RAM).
+            Display-only, no trigger attached. Requires an existing vm.memory.size[total] item on the
+            host (e.g. from "Linux by Zabbix agent"); otherwise this one item will be unsupported.
+          tags:
+            - tag: component
+              value: memory
+        - uuid: e2d26fec9052429c84872f2815e5fa7c
+          name: 'Zswap: raw statistics'
+          key: zswap.stats
+          delay: 5m
+          history: '0'
+          value_type: TEXT
+          description: |
+            Raw JSON produced by /usr/local/bin/zswap_stats.sh (run via sudo, see README.md).
+            Fields: pool_total_size (B), stored_pages, written_back_pages, pool_limit_hit, page_size (B), error.
+            History intentionally not stored (TimescaleDB housekeeping is global, not per-item) -
+            parsed values live in the dependent items below.
+          tags:
+            - tag: component
+              value: memory
+            - tag: stage
+              value: raw
+        - uuid: 59d52e587b88407194c79f989e4c3f66
+          name: 'Zswap: stats collection error'
+          type: DEPENDENT
+          key: zswap.stats.error
+          history: 7d
+          value_type: TEXT
+          description: 'Non-empty when zswap_stats.sh failed to read a debugfs value (check sudoers rule and debugfs mount, see README.md).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.error
+          master_item:
+            key: zswap.stats
+          tags:
+            - tag: component
+              value: health
+            - tag: component
+              value: memory
+          triggers:
+            - uuid: cdb23395f305482ca06fb9b6199521fd
+              expression: 'last(/Zswap by Zabbix agent/zswap.stats.error)<>""'
+              name: 'Zswap: error collecting statistics'
+              priority: HIGH
+              description: 'zswap_stats.sh failed to read one or more debugfs values - check the sudoers rule and debugfs mount (see README.md).'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: e90d5adc39924c6b931ca9b3eb9c3d06
+          name: 'Zswap: page size'
+          type: DEPENDENT
+          key: zswap.stats.page_size
+          history: 7d
+          units: B
+          description: 'Kernel page size (getconf PAGESIZE), used to derive the compression ratio.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.page_size
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 12h
+          master_item:
+            key: zswap.stats
+          tags:
+            - tag: component
+              value: memory
+        - uuid: 9984f9376b4f48a0acd0edf6e0eb9f3e
+          name: 'Zswap: pool limit hit'
+          type: DEPENDENT
+          key: zswap.stats.pool_limit_hit
+          history: 7d
+          description: 'Cumulative number of times a page could not be stored because the zswap pool size limit was reached (since boot).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.pool_limit_hit
+          master_item:
+            key: zswap.stats
+          tags:
+            - tag: component
+              value: memory
+          triggers:
+            - uuid: e0f746a2785a47c0a9c2120c4b0362de
+              expression: 'last(/Zswap by Zabbix agent/zswap.stats.pool_limit_hit)-min(/Zswap by Zabbix agent/zswap.stats.pool_limit_hit,{$ZSWAP.POOL_LIMIT_HIT.TIME})>0'
+              name: 'Zswap: pool size limit hit'
+              priority: WARNING
+              description: 'The zswap pool reached its configured size limit (max_pool_percent) at least once in the last {$ZSWAP.POOL_LIMIT_HIT.TIME}.'
+              dependencies:
+                - name: 'Zswap: error collecting statistics'
+                  expression: 'last(/Zswap by Zabbix agent/zswap.stats.error)<>""'
+              tags:
+                - tag: scope
+                  value: capacity
+        - uuid: 4c25c24311e3447da56145cb67ea6996
+          name: 'Zswap: pool total size'
+          type: DEPENDENT
+          key: zswap.stats.pool_total_size
+          history: 7d
+          units: B
+          description: 'Total size of the compressed zswap pool, in bytes.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.pool_total_size
+          master_item:
+            key: zswap.stats
+          tags:
+            - tag: component
+              value: memory
+        - uuid: 9ae53865f9cd4724b42b70396bfe6fb9
+          name: 'Zswap: stored pages'
+          type: DEPENDENT
+          key: zswap.stats.stored_pages
+          history: 7d
+          description: 'Number of pages currently stored (compressed) in the zswap pool.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.stored_pages
+          master_item:
+            key: zswap.stats
+          tags:
+            - tag: component
+              value: memory
+        - uuid: 66a350343fb3444381aae95fa0c53851
+          name: 'Zswap: written back pages'
+          type: DEPENDENT
+          key: zswap.stats.written_back_pages
+          history: 7d
+          description: 'Cumulative number of pages written back from zswap to the backing swap device (since boot).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.written_back_pages
+          master_item:
+            key: zswap.stats
+          tags:
+            - tag: component
+              value: memory
+          triggers:
+            - uuid: 6b69ba75f17b429fa204107b44ff7fec
+              expression: 'last(/Zswap by Zabbix agent/zswap.stats.written_back_pages)-min(/Zswap by Zabbix agent/zswap.stats.written_back_pages,{$ZSWAP.WRITTEN_BACK.TIME})>0'
+              name: 'Zswap: writing back pages to swap'
+              priority: WARNING
+              description: 'Zswap is writing pages back to the backing swap device (pool under pressure) - increased at least once in the last {$ZSWAP.WRITTEN_BACK.TIME}.'
+              dependencies:
+                - name: 'Zswap: error collecting statistics'
+                  expression: 'last(/Zswap by Zabbix agent/zswap.stats.error)<>""'
+              tags:
+                - tag: scope
+                  value: performance
+      tags:
+        - tag: class
+          value: software
+        - tag: target
+          value: zswap
+      macros:
+        - macro: '{$ZSWAP.POOL_LIMIT_HIT.TIME}'
+          value: 15m
+          description: 'Time window used to detect an increase in the pool_limit_hit counter.'
+        - macro: '{$ZSWAP.WRITTEN_BACK.TIME}'
+          value: 15m
+          description: 'Time window used to detect an increase in the written_back_pages counter.'
+      dashboards:
+        - uuid: 794fb1ce0dc04518bbe2c88a401541b1
+          name: Zswap
+          display_period: '60'
+          pages:
+            - name: Zswap
+              widgets:
+                - type: item
+                  name: 'Config: enabled'
+                  width: '12'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'Zswap by Zabbix agent'
+                        key: 'vfs.file.contents[/sys/module/zswap/parameters/enabled]'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: FCCB1D
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 3BC97D
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                - type: svggraph
+                  name: 'Written back pages'
+                  'y': '2'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: FF7043
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Zswap: written back pages'
+                    - type: INTEGER
+                      name: ds.0.transparency
+                      value: '4'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: ZPZXS
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                    - type: INTEGER
+                      name: simple_triggers
+                      value: '1'
+                - type: svggraph
+                  name: 'Pool limit hit'
+                  'y': '7'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: CE93D8
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Zswap: pool limit hit'
+                    - type: INTEGER
+                      name: ds.0.type
+                      value: '2'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: MEDFY
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                    - type: INTEGER
+                      name: simple_triggers
+                      value: '1'
+                - type: item
+                  name: 'Config: max pool percent'
+                  x: '12'
+                  width: '12'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'Zswap by Zabbix agent'
+                        key: 'vfs.file.contents[/sys/module/zswap/parameters/max_pool_percent]'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: FCCB1D
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 3BC97D
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                - type: item
+                  name: 'Stored pages in memory'
+                  x: '24'
+                  width: '12'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'Zswap by Zabbix agent'
+                        key: zswap.stats.stored_pages
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: FCCB1D
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 3BC97D
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '10'
+                - type: svggraph
+                  name: 'Pool usage (% of configured limit)'
+                  x: '36'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: 4DB6AC
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Zswap: pool usage (% of configured limit)'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: QAHPA
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Compression ratio'
+                  x: '36'
+                  'y': '5'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: 64B5F6
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Zswap: compression ratio'
+                    - type: STRING
+                      name: lefty_max
+                      value: '4'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: ZUZFR
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+      valuemaps:
+        - uuid: 4c211685b7654b1c8689386885d42b46
+          name: 'Zswap: enabled state'
+          mappings:
+            - value: '0'
+              newvalue: Disabled
+            - value: '1'
+              newvalue: Enabled
