@@ -1,176 +1,174 @@
 zabbix_export:
   version: '7.4'
   template_groups:
-  - uuid: a1c09fe31fae4b56b41195ab9b4910ff
-    name: lpavlicek templates
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
   templates:
-  - uuid: e923a593daf94fe28e25c28c40207296
-    template: Request Tracker by Zabbix agent 2
-    name: Request Tracker by Zabbix agent 2
-    description: |-
-      Monitoring for a small Request Tracker 6.0.3 installation running under Apache via mod_fcgid (ScriptAlias .../rt-server.fcgi/).
-
-      Covers: Postfix and RT errors in the shared mail syslog, genuine Apache/mod_fcgid errors for the rt-server.fcgi backend, the age of the last received ticket/reply (via a MySQL custom query), and the number of running rt-server.fcgi processes.
-
-      Deliberately NOT covered (monitored elsewhere or out of scope): operating system resources, web interface availability and certificate validity, the MySQL server itself, the Postfix mail queue, and RT ticket/queue counts.
-
-      Prerequisites on the monitored host:
-        - Zabbix agent 2 with active checks enabled (required for the three log[] items);
-        - the "MySQL by Zabbix agent 2" template linked to the same host, providing {$MYSQL.USER} and {$MYSQL.PASSWORD} (this template intentionally does not redefine them);
-        - Plugins.Mysql.CustomQueriesEnabled=1 and the rt_last_request_age.sql custom query file (see the description of the corresponding item);
-        - the MySQL user above granted SELECT on the rt6.Transactions table.
-    vendor:
-      name: lpavlicek
-      version: 7.4-1
-    groups:
-    - name: lpavlicek templates
-    items:
-    - uuid: dbc7723158954f5ca58328c1c08af0e2
-      name: 'Postfix: fatal/panic/reject errors in mail log'
-      type: ZABBIX_ACTIVE
-      key: 'log[{$RT.LOG.MAIL},"postfix/[a-z_]+\[[0-9]+\]: (fatal|panic|reject):"]'
-      delay: 1s
-      history: 7d
-      value_type: LOG
-      description: |-
-        Matches Postfix log lines tagged fatal:, panic: or reject: in the shared mail log.
-        Postfix mail queue itself is already monitored by a separate template; this item only catches Postfix-level failures that could stop RT from sending or receiving mail (fatal/panic process errors, or messages rejected by Postfix before RT ever sees them). Severity level in syslog is intentionally ignored here, since reject: is commonly logged at info level.
+    - uuid: e923a593daf94fe28e25c28c40207296
+      template: 'Request Tracker by Zabbix agent 2'
+      name: 'Request Tracker by Zabbix agent 2'
+      description: |
+        Monitoring for a small Request Tracker 6.0.3 installation running under Apache via mod_fcgid (ScriptAlias .../rt-server.fcgi/).
+        
+        Covers: Postfix and RT errors in the shared mail syslog, genuine Apache/mod_fcgid errors for the rt-server.fcgi backend, the age of the last received ticket/reply (via a MySQL custom query), and the number of running rt-server.fcgi processes.
+        
+        Deliberately NOT covered (monitored elsewhere or out of scope): operating system resources, web interface availability and certificate validity, the MySQL server itself, the Postfix mail queue, and RT ticket/queue counts.
+        
+        Prerequisites on the monitored host:
+          - Zabbix agent 2 with active checks enabled (required for the three log[] items);
+          - the "MySQL by Zabbix agent 2" template linked to the same host, providing {$MYSQL.USER} and {$MYSQL.PASSWORD} (this template intentionally does not redefine them);
+          - Plugins.Mysql.CustomQueriesEnabled=1 and the rt_last_request_age.sql custom query file (see the description of the corresponding item);
+          - the MySQL user above granted SELECT on the rt6.Transactions table.
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: f1f6fb5ba98b4a1aae83fa8c9ba16519
+          name: 'Apache: mod_fcgid errors for rt-server.fcgi'
+          type: ZABBIX_ACTIVE
+          key: 'log[{$RT.LOG.APACHE.ERROR},"\[fcgid:(warn|error|crit|alert|emerg)\]"]'
+          delay: 1s
+          history: 7d
+          value_type: LOG
+          description: |
+            Matches genuine Apache/mod_fcgid module errors (e.g. "(104)Connection reset by peer: ... mod_fcgid: error reading data from FastCGI server"), tagged [fcgid:warn]/[fcgid:error]/[fcgid:crit]/[fcgid:alert]/[fcgid:emerg] in the Apache error log.
+            RT also writes its own application-level log lines into this same file (via STDERR), but those duplicate what is already captured from /var/log/mail by the "RT: critical errors in mail log" item above, so they are deliberately NOT matched here to avoid double alerting on the same underlying incident.
+          tags:
+            - tag: component
+              value: apache
+          triggers:
+            - uuid: fb7f5a3ca05b496db57f978f3dc1b9e9
+              expression: 'count(/Request Tracker by Zabbix agent 2/log[{$RT.LOG.APACHE.ERROR},"\[fcgid:(warn|error|crit|alert|emerg)\]"],5m)>0'
+              name: 'Apache: mod_fcgid error for rt-server.fcgi on {HOST.NAME}'
+              priority: AVERAGE
+              description: 'Apache/mod_fcgid logged an error communicating with the rt-server.fcgi backend process (e.g. connection reset while reading FastCGI response) in the last 5 minutes.'
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: apache
+        - uuid: 8ee0cd791a384903ab07889cc9e13090
+          name: 'RT: critical errors in mail log'
+          type: ZABBIX_ACTIVE
+          key: 'log[{$RT.LOG.MAIL},"(crit|alert|emerg) mail RT: |DBI connect\("]'
+          delay: 1s
+          history: 7d
+          value_type: LOG
+          description: |
+            Matches RT (syslog tag "RT:") lines logged at crit/alert/emerg severity, plus any "DBI connect(" failure (RT losing its database connection), regardless of the syslog severity that particular message happened to use.
+            The "err" severity is deliberately excluded: in this environment it is used exclusively for "FAILED LOGIN" messages, which are not wanted here (per explicit request). If RT ever logs a genuinely different problem at "err" severity, it will most likely still surface via the crit-level follow-up RT logs immediately after a serious failure (e.g. "Since your configuration exists ... but is not writable, I'm refusing to do anything.").
+          tags:
+            - tag: component
+              value: rt-app
+          triggers:
+            - uuid: c84ee484d6c8444e82e07a353696dd15
+              expression: 'count(/Request Tracker by Zabbix agent 2/log[{$RT.LOG.MAIL},"(crit|alert|emerg) mail RT: |DBI connect\("],5m)>0'
+              name: 'RT: critical error in mail log on {HOST.NAME}'
+              priority: HIGH
+              description: 'RT logged a crit/alert/emerg message (or a database connection failure) via syslog in the last 5 minutes. Typical cause: RT lost its database connection and is refusing to process incoming mail.'
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: rt-app
+        - uuid: dbc7723158954f5ca58328c1c08af0e2
+          name: 'Postfix: fatal/panic/reject errors in mail log'
+          type: ZABBIX_ACTIVE
+          key: 'log[{$RT.LOG.MAIL},"postfix/[a-z_]+\[[0-9]+\]: (fatal|panic|reject):"]'
+          delay: 1s
+          history: 7d
+          value_type: LOG
+          description: |
+            Matches Postfix log lines tagged fatal:, panic: or reject: in the shared mail log.
+            Postfix mail queue itself is already monitored by a separate template; this item only catches Postfix-level failures that could stop RT from sending or receiving mail (fatal/panic process errors, or messages rejected by Postfix before RT ever sees them). Severity level in syslog is intentionally ignored here, since reject: is commonly logged at info level.
+          tags:
+            - tag: component
+              value: mail
+          triggers:
+            - uuid: 5292ea4375174b47983a5d51af9c1571
+              expression: 'count(/Request Tracker by Zabbix agent 2/log[{$RT.LOG.MAIL},"postfix/[a-z_]+\[[0-9]+\]: (fatal|panic|reject):"],5m)>0'
+              name: 'Postfix: fatal/panic error or rejected mail on {HOST.NAME}'
+              priority: WARNING
+              description: 'Postfix logged a fatal/panic error, or rejected a message, in the last 5 minutes.'
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: mail
+        - uuid: 0bb2229d7c7847779b449c93b735cec2
+          name: 'RT: age of last received request (ticket or correspondence)'
+          key: 'mysql.custom.query[{$RT.MYSQL.DSN},{$MYSQL.USER},{$MYSQL.PASSWORD},rt_last_request_age]'
+          delay: 5m
+          history: 7d
+          trends: 90d
+          units: uptime
+          description: |
+            Seconds since the last Transaction of type Create or Correspond was recorded in the RT database - i.e. since the last new ticket was created or the last reply/comment was added to any ticket. Deliberately based on Transactions rather than Tickets, so an incoming reply on an existing ticket counts as activity too, not only brand new tickets.
+            Requires on the monitored host:
+              1) Plugins.Mysql.CustomQueriesEnabled=1 in the Zabbix agent 2 configuration;
+              2) a file named rt_last_request_age.sql in the custom queries directory (Plugins.Mysql.CustomQueriesPath, default /usr/local/share/zabbix/custom-queries/mysql/) containing:
+                 SELECT TIMESTAMPDIFF(SECOND, Created, NOW()) AS age_seconds FROM rt6.Transactions WHERE Type IN ('Create','Correspond') ORDER BY id DESC LIMIT 1
+              3) the MySQL user referenced by {$MYSQL.USER}/{$MYSQL.PASSWORD} (shared with the MySQL template already linked to this host) granted SELECT on rt6.Transactions.
+            The database name (rt6) is hardcoded in the .sql file because mysql.custom.query has no parameter for selecting a database, and multi-statement queries (e.g. a leading USE rt6;) are not supported.
+            Ordering by id (the primary key) descending rather than using MAX(Created) lets MariaDB scan the primary key index backwards and stop at the first matching row, instead of a full table scan of Transactions - MAX(Created) took around 6 seconds on this installation and exceeded the agent's MySQL call timeout.
+            The connString parameter is deliberately set via {$RT.MYSQL.DSN} rather than left empty: an empty connString falls back to tcp://localhost:3306, and on this host "localhost" resolves to the IPv6 address ::1 first, on which MySQL is not listening, causing a TCP i/o timeout (and a subsequent "invalid connection" error from the Go MySQL driver) even though the MySQL server itself is up and reachable via its Unix socket.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$[0].age_seconds'
+          tags:
+            - tag: component
+              value: backlog
+          triggers:
+            - uuid: a0e5d8dffbba42f2a0ab5528eb97318a
+              expression: 'last(/Request Tracker by Zabbix agent 2/mysql.custom.query[{$RT.MYSQL.DSN},{$MYSQL.USER},{$MYSQL.PASSWORD},rt_last_request_age])>{$RT.LASTREQUEST.MAXAGE}'
+              name: 'RT: no new ticket or reply received in the last {$RT.LASTREQUEST.MAXAGE} on {HOST.NAME}'
+              priority: HIGH
+              description: 'No new ticket and no reply/comment on any existing ticket has been recorded in the RT database for longer than {$RT.LASTREQUEST.MAXAGE}. Suppressed automatically while rt-server.fcgi is not running (see dependency), since no requests can arrive in that case either.'
+              dependencies:
+                - name: 'RT: rt-server.fcgi is not running on {HOST.NAME}'
+                  expression: 'max(/Request Tracker by Zabbix agent 2/proc.num[,,,{$RT.PROCESS.NAME}],3m)<{$RT.PROCESS.MIN}'
+              tags:
+                - tag: component
+                  value: backlog
+        - uuid: aefe891dce974fd59a1d7ede8ac80015
+          name: 'RT: number of running rt-server.fcgi processes'
+          key: 'proc.num[,,,{$RT.PROCESS.NAME}]'
+          history: 7d
+          trends: 90d
+          description: 'Number of processes whose command line contains {$RT.PROCESS.NAME}. Matched by command line rather than by process name, since rt-server.fcgi is a Perl script and its short process name as shown by the OS may not be reliable.'
+          tags:
+            - tag: component
+              value: process
+          triggers:
+            - uuid: 0f5c606725454506971133cc6f5ab2e9
+              expression: 'max(/Request Tracker by Zabbix agent 2/proc.num[,,,{$RT.PROCESS.NAME}],3m)<{$RT.PROCESS.MIN}'
+              name: 'RT: rt-server.fcgi is not running on {HOST.NAME}'
+              priority: DISASTER
+              description: 'Fewer than {$RT.PROCESS.MIN} rt-server.fcgi process(es) found for 3 minutes.'
+              tags:
+                - tag: component
+                  value: process
       tags:
-      - tag: component
-        value: mail
-      triggers:
-      - uuid: 5292ea4375174b47983a5d51af9c1571
-        expression: 'count(/Request Tracker by Zabbix agent 2/log[{$RT.LOG.MAIL},"postfix/[a-z_]+\[[0-9]+\]: (fatal|panic|reject):"],5m)>0'
-        name: 'Postfix: fatal/panic error or rejected mail on {HOST.NAME}'
-        priority: WARNING
-        description: Postfix logged a fatal/panic error, or rejected a message, in the last 5 minutes.
-        tags:
-        - tag: component
-          value: mail
-    - uuid: 8ee0cd791a384903ab07889cc9e13090
-      name: 'RT: critical errors in mail log'
-      type: ZABBIX_ACTIVE
-      key: 'log[{$RT.LOG.MAIL},"(crit|alert|emerg) mail RT: |DBI connect\("]'
-      delay: 1s
-      history: 7d
-      value_type: LOG
-      description: |-
-        Matches RT (syslog tag "RT:") lines logged at crit/alert/emerg severity, plus any "DBI connect(" failure (RT losing its database connection), regardless of the syslog severity that particular message happened to use.
-        The "err" severity is deliberately excluded: in this environment it is used exclusively for "FAILED LOGIN" messages, which are not wanted here (per explicit request). If RT ever logs a genuinely different problem at "err" severity, it will most likely still surface via the crit-level follow-up RT logs immediately after a serious failure (e.g. "Since your configuration exists ... but is not writable, I'm refusing to do anything.").
-      tags:
-      - tag: component
-        value: rt-app
-      triggers:
-      - uuid: c84ee484d6c8444e82e07a353696dd15
-        expression: 'count(/Request Tracker by Zabbix agent 2/log[{$RT.LOG.MAIL},"(crit|alert|emerg) mail RT: |DBI connect\("],5m)>0'
-        name: 'RT: critical error in mail log on {HOST.NAME}'
-        priority: HIGH
-        description: 'RT logged a crit/alert/emerg message (or a database connection failure) via syslog in the last 5 minutes. Typical cause: RT lost its database connection and is refusing to process incoming mail.'
-        tags:
-        - tag: component
-          value: rt-app
-    - uuid: f1f6fb5ba98b4a1aae83fa8c9ba16519
-      name: 'Apache: mod_fcgid errors for rt-server.fcgi'
-      type: ZABBIX_ACTIVE
-      key: log[{$RT.LOG.APACHE.ERROR},"\[fcgid:(warn|error|crit|alert|emerg)\]"]
-      delay: 1s
-      history: 7d
-      value_type: LOG
-      description: |-
-        Matches genuine Apache/mod_fcgid module errors (e.g. "(104)Connection reset by peer: ... mod_fcgid: error reading data from FastCGI server"), tagged [fcgid:warn]/[fcgid:error]/[fcgid:crit]/[fcgid:alert]/[fcgid:emerg] in the Apache error log.
-        RT also writes its own application-level log lines into this same file (via STDERR), but those duplicate what is already captured from /var/log/mail by the "RT: critical errors in mail log" item above, so they are deliberately NOT matched here to avoid double alerting on the same underlying incident.
-      tags:
-      - tag: component
-        value: apache
-      triggers:
-      - uuid: fb7f5a3ca05b496db57f978f3dc1b9e9
-        expression: count(/Request Tracker by Zabbix agent 2/log[{$RT.LOG.APACHE.ERROR},"\[fcgid:(warn|error|crit|alert|emerg)\]"],5m)>0
-        name: 'Apache: mod_fcgid error for rt-server.fcgi on {HOST.NAME}'
-        priority: AVERAGE
-        description: Apache/mod_fcgid logged an error communicating with the rt-server.fcgi backend process (e.g. connection reset while reading FastCGI response) in the last 5 minutes.
-        tags:
-        - tag: component
-          value: apache
-    - uuid: 0bb2229d7c7847779b449c93b735cec2
-      name: 'RT: age of last received request (ticket or correspondence)'
-      type: ZABBIX_PASSIVE
-      key: mysql.custom.query[{$RT.MYSQL.DSN},{$MYSQL.USER},{$MYSQL.PASSWORD},rt_last_request_age]
-      delay: 5m
-      history: 7d
-      trends: 90d
-      value_type: UNSIGNED
-      units: uptime
-      description: |-
-        Seconds since the last Transaction of type Create or Correspond was recorded in the RT database - i.e. since the last new ticket was created or the last reply/comment was added to any ticket. Deliberately based on Transactions rather than Tickets, so an incoming reply on an existing ticket counts as activity too, not only brand new tickets.
-        Requires on the monitored host:
-          1) Plugins.Mysql.CustomQueriesEnabled=1 in the Zabbix agent 2 configuration;
-          2) a file named rt_last_request_age.sql in the custom queries directory (Plugins.Mysql.CustomQueriesPath, default /usr/local/share/zabbix/custom-queries/mysql/) containing:
-             SELECT TIMESTAMPDIFF(SECOND, Created, NOW()) AS age_seconds FROM rt6.Transactions WHERE Type IN ('Create','Correspond') ORDER BY id DESC LIMIT 1
-          3) the MySQL user referenced by {$MYSQL.USER}/{$MYSQL.PASSWORD} (shared with the MySQL template already linked to this host) granted SELECT on rt6.Transactions.
-        The database name (rt6) is hardcoded in the .sql file because mysql.custom.query has no parameter for selecting a database, and multi-statement queries (e.g. a leading USE rt6;) are not supported.
-        Ordering by id (the primary key) descending rather than using MAX(Created) lets MariaDB scan the primary key index backwards and stop at the first matching row, instead of a full table scan of Transactions - MAX(Created) took around 6 seconds on this installation and exceeded the agent's MySQL call timeout.
-        The connString parameter is deliberately set via {$RT.MYSQL.DSN} rather than left empty: an empty connString falls back to tcp://localhost:3306, and on this host "localhost" resolves to the IPv6 address ::1 first, on which MySQL is not listening, causing a TCP i/o timeout (and a subsequent "invalid connection" error from the Go MySQL driver) even though the MySQL server itself is up and reachable via its Unix socket.
-      preprocessing:
-      - type: JSONPATH
-        parameters:
-        - $[0].age_seconds
-      tags:
-      - tag: component
-        value: backlog
-      triggers:
-      - uuid: a0e5d8dffbba42f2a0ab5528eb97318a
-        expression: last(/Request Tracker by Zabbix agent 2/mysql.custom.query[{$RT.MYSQL.DSN},{$MYSQL.USER},{$MYSQL.PASSWORD},rt_last_request_age])>{$RT.LASTREQUEST.MAXAGE}
-        name: 'RT: no new ticket or reply received in the last {$RT.LASTREQUEST.MAXAGE} on {HOST.NAME}'
-        priority: HIGH
-        description: No new ticket and no reply/comment on any existing ticket has been recorded in the RT database for longer than {$RT.LASTREQUEST.MAXAGE}. Suppressed automatically while rt-server.fcgi is not running (see dependency), since no requests can arrive in that case either.
-        dependencies:
-        - name: 'RT: rt-server.fcgi is not running on {HOST.NAME}'
-          expression: max(/Request Tracker by Zabbix agent 2/proc.num[,,,{$RT.PROCESS.NAME}],3m)<{$RT.PROCESS.MIN}
-        tags:
-        - tag: component
-          value: backlog
-    - uuid: aefe891dce974fd59a1d7ede8ac80015
-      name: 'RT: number of running rt-server.fcgi processes'
-      type: ZABBIX_PASSIVE
-      key: proc.num[,,,{$RT.PROCESS.NAME}]
-      delay: 1m
-      history: 7d
-      trends: 90d
-      value_type: UNSIGNED
-      description: Number of processes whose command line contains {$RT.PROCESS.NAME}. Matched by command line rather than by process name, since rt-server.fcgi is a Perl script and its short process name as shown by the OS may not be reliable.
-      tags:
-      - tag: component
-        value: process
-      triggers:
-      - uuid: 0f5c606725454506971133cc6f5ab2e9
-        expression: max(/Request Tracker by Zabbix agent 2/proc.num[,,,{$RT.PROCESS.NAME}],3m)<{$RT.PROCESS.MIN}
-        name: 'RT: rt-server.fcgi is not running on {HOST.NAME}'
-        priority: DISASTER
-        description: Fewer than {$RT.PROCESS.MIN} rt-server.fcgi process(es) found for 3 minutes.
-        tags:
-        - tag: component
-          value: process
-    tags:
-    - tag: class
-      value: application
-    - tag: target
-      value: request-tracker
-    macros:
-    - macro: '{$RT.MYSQL.DSN}'
-      value: unix:/run/mysqld/mysqld.sock
-      description: MySQL connection string for the last-request-age query. Set explicitly to the Unix socket rather than left empty, since an empty value defaults to tcp://localhost:3306 which can fail (localhost resolving to ::1) even when MySQL is reachable via its socket. Adjust if this host uses a different socket path or a TCP connection (e.g. tcp://127.0.0.1:3306).
-    - macro: '{$RT.LOG.MAIL}'
-      value: /var/log/mail
-      description: Path to the syslog file containing both Postfix and RT (syslog tag "RT:") log lines.
-    - macro: '{$RT.LOG.APACHE.ERROR}'
-      value: /var/log/apache2/error.log
-      description: Path to the Apache error log used by the rt-server.fcgi virtual host.
-    - macro: '{$RT.PROCESS.NAME}'
-      value: rt-server.fcgi
-      description: Substring to match in the full command line of the rt-server.fcgi process(es).
-    - macro: '{$RT.PROCESS.MIN}'
-      value: '1'
-      description: Minimum number of rt-server.fcgi processes expected to be running at all times.
-    - macro: '{$RT.LASTREQUEST.MAXAGE}'
-      value: 24h
-      description: Maximum acceptable time since the last new ticket or reply before raising a problem.
+        - tag: class
+          value: application
+        - tag: target
+          value: request-tracker
+      macros:
+        - macro: '{$RT.LASTREQUEST.MAXAGE}'
+          value: 24h
+          description: 'Maximum acceptable time since the last new ticket or reply before raising a problem.'
+        - macro: '{$RT.LOG.APACHE.ERROR}'
+          value: /var/log/apache2/error.log
+          description: 'Path to the Apache error log used by the rt-server.fcgi virtual host.'
+        - macro: '{$RT.LOG.MAIL}'
+          value: /var/log/mail
+          description: 'Path to the syslog file containing both Postfix and RT (syslog tag "RT:") log lines.'
+        - macro: '{$RT.MYSQL.DSN}'
+          value: 'unix:/run/mysqld/mysqld.sock'
+          description: 'MySQL connection string for the last-request-age query. Set explicitly to the Unix socket rather than left empty, since an empty value defaults to tcp://localhost:3306 which can fail (localhost resolving to ::1) even when MySQL is reachable via its socket. Adjust if this host uses a different socket path or a TCP connection (e.g. tcp://127.0.0.1:3306).'
+        - macro: '{$RT.PROCESS.MIN}'
+          value: '1'
+          description: 'Minimum number of rt-server.fcgi processes expected to be running at all times.'
+        - macro: '{$RT.PROCESS.NAME}'
+          value: rt-server.fcgi
+          description: 'Substring to match in the full command line of the rt-server.fcgi process(es).'

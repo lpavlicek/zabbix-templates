@@ -141,7 +141,7 @@ Incoming: TCP, TLS (DoT), HTTPS (DoH), IPv6. Outgoing: UDP, TCP.
 Queries with EDNS present, with DO bit set, with ECS option.
 
 ### Performance
-`total.recursion.time.avg`, `total.recursion.time.median`, `total.requestlist.avg`, `total.requestlist.max`, `total.requestlist.exceeded`, `total.requestlist.overwritten`.
+`total.recursion.time.avg`, `total.recursion.time.median`, `total.requestlist.avg`, `total.requestlist.max`, `total.requestlist.exceeded`, `total.requestlist.overwritten`, `request_list_max_usage` (calculated, `%`) — request list utilization, `last(total.requestlist.max) / last(option.num-queries-per-thread) * 100`.
 
 ### Security (`qps`)
 `unwanted.queries`, `unwanted.replies` — refused/dropped or unsolicited traffic.
@@ -192,12 +192,23 @@ Queries overview · Query types (A/AAAA/HTTPS/MX/NS/PTR and SOA/SRV/SSHFP/SVCB/T
 - Per-thread counters (`thread0.*`, `thread1.*`, …) are **not** included; the script aggregates only the `total.*` counters already computed by unbound.
 - The `unbound.version` item has a typo in its name (`Unboud:` instead of `Unbound:`) — this is harmless but worth fixing if you export the template.
 - Items `histogram.128ms.256ms` and `histogram.4s.512s` are missing the explicit `value_type: FLOAT` field present on the other histogram items. Zabbix will default to `FLOAT` in practice, but adding it explicitly makes the template more consistent.
+- `request_list_max_usage` is a `CALCULATED` item (not `DEPENDENT`) since it combines two separate items (`total.requestlist.max` and `option.num-queries-per-thread`) rather than parsing the shared JSON blob. Trends are disabled for it — it's meant for a dashboard Gauge widget (thresholds: 50% warning, 80% critical), which has not yet been added to the built-in dashboard.
 
 ---
 
 ## Compatibility
 
 Tested against **unbound 1.20 – 1.23**. The `total_num_queries_discard_timeout` and `total_num_queries_wait_limit` counters were introduced in unbound 1.23; on older versions the script emits `0` for these.
+
+---
+
+## Changelog
+
+**7.4-2**
+- Added item `Unbound: Request list queue max usage` (`unbound.request_list_max_usage`, `CALCULATED`, `%`) — request list utilization, intended for a dashboard Gauge widget (not yet added).
+
+**7.4-1**
+- Initial release.
 
 ---
 
@@ -209,4 +220,4 @@ This template is provided as-is, free to use and modify. Attribution appreciated
 
 ## Author
 
-lpavlicek — template version 7.4-1
+lpavlicek — template version 7.4-2

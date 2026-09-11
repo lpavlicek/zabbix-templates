@@ -1,0 +1,354 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: 91fec9627dc343668f698a91a29a082d
+      template: 'M365 Sign-in Logs Pipeline'
+      name: 'M365 Sign-in Logs Pipeline'
+      description: |
+        Monitoring pipeline pro stahování a nahrávání M365 sign-in logů do PostgreSQL/TimescaleDB.
+        
+        Data jsou sbírána přes zabbix_sender (push model, TLS/PSK) z Ubuntu serveru kde běží pipeline. Skript m365_monitor.sh volá m365_zabbix_data.pl který čte z DB a posílá JSON jako hodnotu master trapper itemu m365.data.
+        
+        Zdroje dat:
+               etl.fetch_state  - checkpoint lag
+               etl.load_runs    - status a statistiky běhů loaderu
+      vendor:
+        name: lpavlicek
+        version: 7.4-2
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: eed43503f1f54c698ebd2a5e41b90f4e
+          name: 'M365 monitoring data (raw JSON)'
+          type: TRAP
+          key: m365.data
+          history: '0'
+          value_type: TEXT
+          description: 'Master item. Přijímá JSON payload z m365_monitor.sh přes zabbix_sender. Všechny ostatní itemy jsou Dependent items odvozené z tohoto JSONu.'
+          tags:
+            - tag: component
+              value: pipeline
+            - tag: stage
+              value: raw
+        - uuid: d96325f43b464a9bb94bb52d6a3a9a12
+          name: 'Interactive: zpoždění checkpointu'
+          type: DEPENDENT
+          key: m365.interactive.checkpoint_lag_minutes
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.signin_interactive.checkpoint_lag_minutes
+            - type: MULTIPLIER
+              parameters:
+                - '60'
+          master_item:
+            key: m365.data
+          tags:
+            - tag: component
+              value: checkpoint
+            - tag: source
+              value: interactive
+          triggers:
+            - uuid: ce459b6178fe4be8b959bf5211c56db4
+              expression: 'last(/M365 Sign-in Logs Pipeline/m365.interactive.checkpoint_lag_minutes)>{$M365_CHECKPOINT_LAG_HIGH}'
+              name: 'M365 Interactive: zpoždění checkpointu > {$M365_CHECKPOINT_LAG_HIGH}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: HIGH
+              description: 'Checkpoint interaktivních sign-inů je více než {$M365_CHECKPOINT_LAG_HIGH} minut za aktuálním časem. Data v DB jsou výrazně zastaralá.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: interactive
+            - uuid: 43a6a9e6edf1419ea44d9c05dde5cbf3
+              expression: 'last(/M365 Sign-in Logs Pipeline/m365.interactive.checkpoint_lag_minutes) > {$M365_CHECKPOINT_LAG_WARN}'
+              name: 'M365 Interactive: zpoždění checkpointu > {$M365_CHECKPOINT_LAG_WARN}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: WARNING
+              description: 'Checkpoint interaktivních sign-inů je více než {$M365_CHECKPOINT_LAG_WARN} minut za aktuálním časem.'
+              dependencies:
+                - name: 'M365 Interactive: zpoždění checkpointu > {$M365_CHECKPOINT_LAG_HIGH}'
+                  expression: 'last(/M365 Sign-in Logs Pipeline/m365.interactive.checkpoint_lag_minutes)>{$M365_CHECKPOINT_LAG_HIGH}'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: interactive
+        - uuid: ab1b1c0101d74a229e8e795773ea17e1
+          name: 'Interactive: doba od posledního nahrání'
+          type: DEPENDENT
+          key: m365.interactive.last_run_minutes_ago
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.signin_interactive.last_run_minutes_ago
+            - type: MULTIPLIER
+              parameters:
+                - '60'
+          master_item:
+            key: m365.data
+          tags:
+            - tag: source
+              value: interactive
+        - uuid: 20fc309a4d9241168416e4bc1a4b7e30
+          name: 'Interactive: status posledního nahrání'
+          type: DEPENDENT
+          key: m365.interactive.last_run_ok
+          description: '1 = poslední nahrání úspěšné (success), 0 = selhalo nebo nikdy neběželo'
+          valuemap:
+            name: 'Nahrávání OK'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.signin_interactive.last_run_ok
+          master_item:
+            key: m365.data
+          tags:
+            - tag: source
+              value: interactive
+          triggers:
+            - uuid: e90471bd352d4c29aa300f97e97e895a
+              expression: 'last(/M365 Sign-in Logs Pipeline/m365.interactive.last_run_ok)=0'
+              name: 'M365 Interactive: poslední nahrání selhalo'
+              priority: AVERAGE
+              description: 'Poslední dokončený běh loaderu pro interaktivní sign-iny skončil chybou nebo loader ještě nikdy neběžel. Zkontroluj /opt/m365logs/logs/load_signin_logs.log a adresář /opt/m365logs/var/raw/error/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: interactive
+        - uuid: ef20ae59ceed48ce9b3a08b83e55943e
+          name: 'Interactive: počet nahrání dnes'
+          type: DEPENDENT
+          key: m365.interactive.loads_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.signin_interactive.loads_today
+          master_item:
+            key: m365.data
+          tags:
+            - tag: source
+              value: interactive
+        - uuid: baba2242a4964c668ed80d11f34b4736
+          name: 'Interactive: počet duplicit dnes'
+          type: DEPENDENT
+          key: m365.interactive.rows_conflict_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.signin_interactive.rows_conflict_today
+          master_item:
+            key: m365.data
+          tags:
+            - tag: source
+              value: interactive
+        - uuid: a475f2416aef462bbbc2feb2c9388b11
+          name: 'Interactive: počet nahraných řádků dnes'
+          type: DEPENDENT
+          key: m365.interactive.rows_inserted_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.signin_interactive.rows_inserted_today
+          master_item:
+            key: m365.data
+          tags:
+            - tag: source
+              value: interactive
+        - uuid: 3194607acd6e4dacb8c59a2e18953542
+          name: 'Non-interactive: zpoždění checkpointu'
+          type: DEPENDENT
+          key: m365.noninteractive.checkpoint_lag_minutes
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.signin_noninteractive.checkpoint_lag_minutes
+            - type: MULTIPLIER
+              parameters:
+                - '60'
+          master_item:
+            key: m365.data
+          tags:
+            - tag: source
+              value: noninteractive
+          triggers:
+            - uuid: c399564de1134118a124bb8c2e6f81ef
+              expression: 'last(/M365 Sign-in Logs Pipeline/m365.noninteractive.checkpoint_lag_minutes)>{$M365_CHECKPOINT_LAG_HIGH}'
+              name: 'M365 Non-interactive: zpoždění checkpointu > {$M365_CHECKPOINT_LAG_HIGH}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: HIGH
+              description: 'Checkpoint non-interaktivních sign-inů je více než {$M365_CHECKPOINT_LAG_HIGH} minut za aktuálním časem. Data v DB jsou výrazně zastaralá.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: noninteractive
+            - uuid: 742bc94928d341678dcf7d274a915fbb
+              expression: 'last(/M365 Sign-in Logs Pipeline/m365.noninteractive.checkpoint_lag_minutes)>{$M365_CHECKPOINT_LAG_WARN}'
+              name: 'M365 Non-interactive: zpoždění checkpointu > {$M365_CHECKPOINT_LAG_WARN}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: WARNING
+              description: 'Checkpoint non-interaktivních sign-inů je více než {$M365_CHECKPOINT_LAG_WARN} minut za aktuálním časem.'
+              dependencies:
+                - name: 'M365 Non-interactive: zpoždění checkpointu > {$M365_CHECKPOINT_LAG_HIGH}'
+                  expression: 'last(/M365 Sign-in Logs Pipeline/m365.noninteractive.checkpoint_lag_minutes)>{$M365_CHECKPOINT_LAG_HIGH}'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: noninteractive
+        - uuid: 707831ba4e7d45fbac84c9a273d177be
+          name: 'Non-interactive: doba od posledního nahrání'
+          type: DEPENDENT
+          key: m365.noninteractive.last_run_minutes_ago
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.signin_noninteractive.last_run_minutes_ago
+            - type: MULTIPLIER
+              parameters:
+                - '60'
+          master_item:
+            key: m365.data
+          tags:
+            - tag: source
+              value: noninteractive
+        - uuid: dbb35a5be7a44084af8424181cd9b499
+          name: 'Non-interactive: status posledního nahrání'
+          type: DEPENDENT
+          key: m365.noninteractive.last_run_ok
+          description: '1 = poslední nahrání úspěšné (success), 0 = selhalo nebo nikdy neběželo'
+          valuemap:
+            name: 'Nahrávání OK'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.signin_noninteractive.last_run_ok
+          master_item:
+            key: m365.data
+          tags:
+            - tag: source
+              value: noninteractive
+          triggers:
+            - uuid: 71589fb267954b9b8cf84e837bd4f80f
+              expression: 'last(/M365 Sign-in Logs Pipeline/m365.noninteractive.last_run_ok)=0'
+              name: 'M365 Non-interactive: poslední nahrání selhalo'
+              priority: AVERAGE
+              description: |
+                Poslední dokončený běh loaderu pro non-interaktivní sign-iny skončil chybou nebo loader ještě nikdy neběžel. Zkontroluj: 
+                  /opt/m365logs/logs/load_signin_logs.log,
+                  /opt/m365logs/logs/cron_fetch_noninteractive.log,
+                  /opt/m365logs/var/raw/error/.
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: noninteractive
+        - uuid: a549aa50ecb34f03b7add9c28f3f32aa
+          name: 'Non-interactive: počet nahrání dnes'
+          type: DEPENDENT
+          key: m365.noninteractive.loads_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.signin_noninteractive.loads_today
+          master_item:
+            key: m365.data
+          tags:
+            - tag: source
+              value: noninteractive
+        - uuid: 39fa92c5095840bca15d236e66d2cd16
+          name: 'Non-interactive: počet duplicit dnes'
+          type: DEPENDENT
+          key: m365.noninteractive.rows_conflict_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.signin_noninteractive.rows_conflict_today
+          master_item:
+            key: m365.data
+          tags:
+            - tag: source
+              value: noninteractive
+        - uuid: 9636ad132186484f8dcc260bd084b22e
+          name: 'Non-interactive: počet nahraných řádků dnes'
+          type: DEPENDENT
+          key: m365.noninteractive.rows_inserted_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.signin_noninteractive.rows_inserted_today
+          master_item:
+            key: m365.data
+          tags:
+            - tag: source
+              value: noninteractive
+      tags:
+        - tag: class
+          value: software
+        - tag: target
+          value: m365logs
+      macros:
+        - macro: '{$M365_CHECKPOINT_LAG_HIGH}'
+          value: 240m
+          description: 'Kritické zpoždění checkpointu v minutách (default: 4 hodiny)'
+        - macro: '{$M365_CHECKPOINT_LAG_WARN}'
+          value: 120m
+          description: 'Varování při zpoždění checkpointu větším než N minut (default: 2 hodiny)'
+      valuemaps:
+        - uuid: b983f8434f8543aea4046870a2f0b455
+          name: 'Nahrávání OK'
+          mappings:
+            - value: '0'
+              newvalue: bad
+            - value: '1'
+              newvalue: success
+  graphs:
+    - uuid: 62290e79a505438f903df04fb6e501f6
+      name: 'Počet nahraných řádků dnes: interactive'
+      show_work_period: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 4CAF50
+          calc_fnc: ALL
+          item:
+            host: 'M365 Sign-in Logs Pipeline'
+            key: m365.interactive.rows_inserted_today
+    - uuid: 15c6c4a6c11a405ebce42c4cc4560664
+      name: 'Počet nahraných řádků dnes: noninteractive'
+      show_work_period: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 1A7C11
+          calc_fnc: ALL
+          item:
+            host: 'M365 Sign-in Logs Pipeline'
+            key: m365.noninteractive.rows_inserted_today
+    - uuid: a5506fb048854cb59f465e71547fb339
+      name: 'Zpoždění checkpointu: interactive'
+      show_work_period: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 1A7C11
+          calc_fnc: ALL
+          item:
+            host: 'M365 Sign-in Logs Pipeline'
+            key: m365.interactive.checkpoint_lag_minutes
+    - uuid: c9ee7be91b964472914ff4d892464f23
+      name: 'Zpoždění checkpointu: noninteractive'
+      show_work_period: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 1A7C11
+          calc_fnc: ALL
+          item:
+            host: 'M365 Sign-in Logs Pipeline'
+            key: m365.noninteractive.checkpoint_lag_minutes

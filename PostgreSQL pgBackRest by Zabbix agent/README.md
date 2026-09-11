@@ -128,7 +128,9 @@ jako repo1+repo3):
   zapsat/archivovat testovací WAL segment
 
 **LLD – zálohy** (`{#REPO}` × `{#TYPE}`, jen reálně existující kombinace):
-- čas poslední zálohy daného typu v daném repu (+ trigger na stáří)
+- čas poslední zálohy daného typu v daném repu (informativní), a odděleně
+  čas poslední zálohy daného typu **nebo full** (trigger na stáří – full
+  záloha zachraňuje limit i pro diff/incr)
 - velikost skutečně zálohovaných dat (`info.delta`) a komprimovaná velikost
   na repu (`info.repository.delta`) – **ne** `info.size`/`info.repository.size`,
   což jsou celkové/kumulativní hodnoty stejné pro celý řetězec záloh
@@ -155,6 +157,26 @@ jako repo1+repo3):
 - Zaplnění S3 repozitáře se nemonitoruje (řešeno mimo tuto šablonu).
 
 ## Changelog
+
+### 7.4-2 (2026-08-02)
+- Oprava falešných poplachů na chybějící `diff`/`incr` zálohu ve dnech, kdy
+  proběhla jen `full` záloha (např. neděle na některých serverech).
+- Přidán nový item `pgbackrest.backup.covered.timestamp[{#REPO},{#TYPE}]`,
+  který v rámci vlastního JS preprocessingu (nad stejným JSONem z
+  `pgbackrest info`) vrátí čas poslední zálohy, která je buď daného typu,
+  nebo `full` (full záloha pokrývá totéž, co by pokryla diff/incr). Trigger
+  na stáří `diff`/`incr` zálohy nyní vychází z tohoto itemu místo z čistě
+  typové položky – porovnává se proti stejnému limitu jako dřív
+  (`{$PGBACKREST.BACKUP.MAX.AGE:"{#TYPE}"}`), jen zohledňuje i full zálohu.
+  Původní `pgbackrest.backup.last.timestamp[{#REPO},{#TYPE}]` zůstává beze
+  změny jako čistě informativní hodnota (skutečný čas poslední zálohy
+  daného typu, bez "full" fallbacku) pro grafy/přehled.
+- Pozn. k implementaci: první pokus odkazoval na sesterský item přes
+  `pgbackrest.backup.last.timestamp[{#REPO},full]` (ruční dosazení literálu
+  místo `{#TYPE}`) – Zabbix takový odkaz při importu odmítá ("Incorrect item
+  key ... provided for trigger expression"), protože validuje klíč pozičně
+  vůči šabloně item prototypu (buď stejný literál, nebo stejné LLD makro).
+  Řešením je samostatný item, který si vše spočítá sám.
 
 ### 7.4-1 (2026-07-28)
 - První verze šablony.

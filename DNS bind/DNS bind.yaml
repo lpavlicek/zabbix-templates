@@ -1,0 +1,1542 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: fba9b38b987b43d0afb2b8aa88628493
+      template: 'DNS bind'
+      name: 'DNS bind'
+      description: 'Monitors ISC BIND DNS server via its statistics-channels HTTP/JSON API. Data is collected by the bind_stats_zabbix external script and sent via zabbix_sender. Requires BIND statistics-channels configured on 127.0.0.1:8053.'
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 7ba59fa18d754f29b25ff79d176e61bf
+          name: 'Bind Boot-Time: Bind startup time'
+          type: TRAP
+          key: bind.boot-time
+          units: unixtime
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 4da30697b1cf4c2b9a747f9084edb7d2
+          name: 'Bind Config-time: Time of the last configuration change in the running process'
+          type: TRAP
+          key: bind.config-time
+          units: unixtime
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 579c81e7fe3e463ea2e06a7c89a8d946
+          name: 'Bind Error message when retrieving data'
+          type: TRAP
+          key: bind.error_msg
+          value_type: TEXT
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 8h
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+          triggers:
+            - uuid: f62da6f70fad4d889098b78b333d4cf0
+              expression: 'length(last(/DNS bind/bind.error_msg))>0'
+              name: 'BIND: error retrieving statistics data'
+              opdata: '{ITEM.VALUE}'
+              priority: AVERAGE
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: dns
+                - tag: software
+                  value: bind
+        - uuid: 4eda540daeb8420480565da0f465a784
+          name: 'Bind AuthQryRej: Rejected requests for authoritative zones'
+          type: TRAP
+          key: bind.nsstats.AuthQryRej
+          value_type: FLOAT
+          units: req/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: b6af506038c24e5ba928272c7bd0dd80
+          name: 'Bind CookieBadTime: Cookie with an invalid expiration time (too old/too new)'
+          type: TRAP
+          key: bind.nsstats.CookieBadTime
+          value_type: FLOAT
+          units: cookie/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 46fa3933f2874fe9a48665348bd4f18b
+          name: 'Bind CookieIn: Total number of received DNS cookies (RFC 7873)'
+          type: TRAP
+          key: bind.nsstats.CookieIn
+          value_type: FLOAT
+          units: cookie/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: e4bc628d1ff84a659203db53dbf74de2
+          name: 'Bind CookieMatch: Cookie successfully verified (status: good)'
+          type: TRAP
+          key: bind.nsstats.CookieMatch
+          value_type: FLOAT
+          units: cookie/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: c07862786d784deb86ee5c3ac6a27b07
+          name: 'Bind CookieNew: The server generated a new cookie for the client (first contact)'
+          type: TRAP
+          key: bind.nsstats.CookieNew
+          value_type: FLOAT
+          units: cookie/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 7d3ce7bde0974a7a97fdada438d18c8f
+          name: 'Bind CookieNoMatch: The cookie does not match any known client'
+          type: TRAP
+          key: bind.nsstats.CookieNoMatch
+          value_type: FLOAT
+          units: cookie/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 2565e1dac37c4bdc94d74bf51cb241e6
+          name: 'Bind ECSOpt: EDNS Client Subnet (ECS)'
+          type: TRAP
+          key: bind.nsstats.ECSOpt
+          value_type: FLOAT
+          units: req/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: af5ca10644114745a9c831bfb846acfd
+          name: 'Bind QryAuthAns: Responses with the AA bit (Authoritative Answer)'
+          type: TRAP
+          key: bind.nsstats.QryAuthAns
+          value_type: FLOAT
+          units: qry/s
+          description: 'Responses with the AA bit (Authoritative Answer) – the server is authoritative for the given zone.'
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 0a1ffc1ccb1d443991fe03e881204480
+          name: 'Bind QryBADCOOKIE: Responses with the BADCOOKIE (client resend the request with a new cookie)'
+          type: TRAP
+          key: bind.nsstats.QryBADCOOKIE
+          value_type: FLOAT
+          units: cookie/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 9eef60de8fb44be3b59e90c1e447c47d
+          name: 'Bind QryDropped: Total number of rejected queries (most often due to rate limits)'
+          type: TRAP
+          key: bind.nsstats.QryDropped
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 30e8af2220224fd6aed33ed34d6ae983
+          name: 'Bind QryFailure: Other query failures (SERVFAIL, etc., excluding NXDOMAIN)'
+          type: TRAP
+          key: bind.nsstats.QryFailure
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: d62efb4edee24d3eb981afdb0754c723
+          name: 'Bind QryNoauthAns: Responses without the AA bit (recursive or from the cache)'
+          type: TRAP
+          key: bind.nsstats.QryNoauthAns
+          value_type: FLOAT
+          units: qry/s
+          description: 'Responses without the AA bit (recursive responses or responses from the cache)'
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: f01bd5882d0a478f911637b047b3593e
+          name: 'Bind QryNXDOMAIN: NXDOMAIN responses (name does not exist)'
+          type: TRAP
+          key: bind.nsstats.QryNXDOMAIN
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 01be47bb9bd2469f863bfa77c570f42e
+          name: 'Bind QryNxrrset: NOERROR, but no records of that type'
+          type: TRAP
+          key: bind.nsstats.QryNxrrset
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 2e29e07fe3fd49abaa2a22596b07db49
+          name: 'Bind QryReferral: Referral responses (delegation to other nameservers)'
+          type: TRAP
+          key: bind.nsstats.QryReferral
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 240957d9d7da4f419bd4eb9ddaa552b7
+          name: 'Bind QrySuccess: Successful queries = NOERROR + at least 1 record in the result set'
+          type: TRAP
+          key: bind.nsstats.QrySuccess
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 002af26748d54a95817d6e40b1acea73
+          name: 'Bind QryTCP: Queries received via TCP'
+          type: TRAP
+          key: bind.nsstats.QryTCP
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 4c318a556201420381dd52d898106f35
+          name: 'Bind QryUDP: Queries received via UDP'
+          type: TRAP
+          key: bind.nsstats.QryUDP
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 2a568904cb704f8287539cb5ed5c646c
+          name: 'Bind RateDropped: Number of responses completely discarded due to rate limiting'
+          type: TRAP
+          key: bind.nsstats.RateDropped
+          value_type: FLOAT
+          units: req/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: cf3568dd019d4ad886b617ee950bcc59
+          name: 'Bind RateSlipped: The number of responses for which the TC bit was set instead of being discarded'
+          type: TRAP
+          key: bind.nsstats.RateSlipped
+          value_type: FLOAT
+          units: req/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 10ed69fc06a84b6e89c8ca59767630fa
+          name: 'Bind RecQryRej: Rejected requests for recursive responses'
+          type: TRAP
+          key: bind.nsstats.RecQryRej
+          value_type: FLOAT
+          units: req/s
+          description: 'Requests for recursive resolution rejected (recursion disabled or blocked by allow-recursion ACL).'
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 4f31fbd94f4047df8e2b83268aea3ac1
+          name: 'Bind ReqEdns0: Requests that included EDNS0'
+          type: TRAP
+          key: bind.nsstats.ReqEdns0
+          value_type: FLOAT
+          units: req/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 233f84819332422fb1ce4c9cc809645b
+          name: 'Bind ReqTCP: Requests received via TCP'
+          type: TRAP
+          key: bind.nsstats.ReqTCP
+          value_type: FLOAT
+          units: req/s
+          description: |
+            ReqTCP (Request TCP)
+            - counts every DNS request received over TCP
+            - this is a low-level metric
+            - incremented when a request is received on a TCP connection
+            - unlike QryTCP, also includes zone transfers, Notify, DnsUpdate, etc.
+            - a single TCP connection may carry multiple DNS requests
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 0a14311de4134ce9886b53d5b9730662
+          name: 'Bind ReqTSIG: Requests with TSIG authentication'
+          type: TRAP
+          key: bind.nsstats.ReqTSIG
+          value_type: FLOAT
+          units: req/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 3987863c1d5a4674a501e220861b195a
+          name: 'Bind Requestv4: Total number of DNS requests received via IPv4 (UDP + TCP)'
+          type: TRAP
+          key: bind.nsstats.Requestv4
+          value_type: FLOAT
+          units: req/s
+          description: 'Total number of DNS requests received via IPv4 (UDP + TCP).'
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: c47c5a417ed24e5ca1d2e7b57b67d033
+          name: 'Bind Requestv6: Total number of DNS requests received via IPv6 (UDP + TCP)'
+          type: TRAP
+          key: bind.nsstats.Requestv6
+          value_type: FLOAT
+          units: req/s
+          description: 'Total number of DNS requests received via IPv6 (UDP + TCP).'
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 0db12abe73714a09abde5b154c81c356
+          name: 'Bind RespEDNS0: Responses sent with EDNS0'
+          type: TRAP
+          key: bind.nsstats.RespEDNS0
+          value_type: FLOAT
+          units: resp/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: e41fdbc2589a427b85c94ff88f1ce690
+          name: 'Bind Response: Total number of responses submitted'
+          type: TRAP
+          key: bind.nsstats.Response
+          value_type: FLOAT
+          units: resp/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+          triggers:
+            - uuid: b4a2d59e22e94ed48ebda7c2568c0ade
+              expression: 'nodata(/DNS bind/bind.nsstats.Response,15m)=1'
+              name: 'BIND: no response stats in the last 15 minutes'
+              opdata: '{ITEM.VALUE}'
+              priority: WARNING
+              description: 'No response count data received from the BIND server in the last 15 minutes.'
+              dependencies:
+                - name: 'BIND: error retrieving statistics data'
+                  expression: 'length(last(/DNS bind/bind.error_msg))>0'
+              tags:
+                - tag: component
+                  value: dns
+                - tag: software
+                  value: bind
+        - uuid: 7ab1a0cc07804bdc9b76b69d21ae5de0
+          name: 'Bind RespTSIG: Responses with a TSIG (usually matches ReqTSIG)'
+          type: TRAP
+          key: bind.nsstats.RespTSIG
+          value_type: FLOAT
+          units: resp/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 6b19a84d45464289ac132fabee176493
+          name: 'Bind TCPConnHighWater: Maximum number of concurrent TCP connections'
+          type: TRAP
+          key: bind.nsstats.TCPConnHighWater
+          units: conn
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 2h
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 0b15bda55b484deda01e2d563d939002
+          name: 'Bind TruncatedResp: Responses for which the TC bit (truncated) was set'
+          type: TRAP
+          key: bind.nsstats.TruncatedResp
+          value_type: FLOAT
+          units: resp/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: be445eea8d53421488cd915b4ac0f3e1
+          name: 'Bind XfrRej: Rejected zone transfers (AXFR/IXFR)'
+          type: TRAP
+          key: bind.nsstats.XfrRej
+          value_type: FLOAT
+          units: req/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 1e3d03b8c40348adb2cd290436dca7af
+          name: 'Bind XfrReqDone: Successfully completed zone transfers (AXFR/IXFR)'
+          type: TRAP
+          key: bind.nsstats.XfrReqDone
+          value_type: FLOAT
+          units: req/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: e5f1f3a704004c09a6e9d0afb57d0fb3
+          name: 'Bind Query Type: A records'
+          type: TRAP
+          key: bind.qtypes.A
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 9880db7c90e24175a839fceb9292894a
+          name: 'Bind Query Type: AAAA records'
+          type: TRAP
+          key: bind.qtypes.AAAA
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: ac2b668172414172931c6e92f0192681
+          name: 'Bind Query Type: CNAME records'
+          type: TRAP
+          key: bind.qtypes.CNAME
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 395f60ad1d1745e9b2373473b8c930b8
+          name: 'Bind Query Type: DNSKEY records'
+          type: TRAP
+          key: bind.qtypes.DNSKEY
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: c3f22bfb9903416c8f1dc5acd14e29a1
+          name: 'Bind Query Type: DS records'
+          type: TRAP
+          key: bind.qtypes.DS
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 1b4c879525bc48e289f8e3197734058a
+          name: 'Bind Query Type: HTTPS records'
+          type: TRAP
+          key: bind.qtypes.HTTPS
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: d72db3965f964cd7aca64137706e1b41
+          name: 'Bind Query Type: MX records'
+          type: TRAP
+          key: bind.qtypes.MX
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 728c6f40273e4fc99393150e199c960b
+          name: 'Bind Query Type: NS records'
+          type: TRAP
+          key: bind.qtypes.NS
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: b0ae084ff511415bb724376a549b51ab
+          name: 'Bind Query Type: other types'
+          type: TRAP
+          key: bind.qtypes.other
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 2a15158040f54fba80c09398e3dd50de
+          name: 'Bind Query Type: PTR records'
+          type: TRAP
+          key: bind.qtypes.PTR
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: bd86f67b6b2d4b9aa8639ebc13e940f6
+          name: 'Bind Query Type: SOA records'
+          type: TRAP
+          key: bind.qtypes.SOA
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: cf2bb2e180bc432baf1a03af80df9204
+          name: 'Bind Query Type: SRV records'
+          type: TRAP
+          key: bind.qtypes.SRV
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 1d75bdbd3f01401d819c82ac475c0169
+          name: 'Bind Query Type: SVCB records'
+          type: TRAP
+          key: bind.qtypes.SVCB
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 18f9894d44164911af65f600482f701d
+          name: 'Bind Query Type: TXT records'
+          type: TRAP
+          key: bind.qtypes.TXT
+          value_type: FLOAT
+          units: qry/s
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+        - uuid: 31ab3645d233499bb313bfdd8dbf3e62
+          name: 'Bind Software Version'
+          type: TRAP
+          key: bind.version
+          value_type: CHAR
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 8h
+          tags:
+            - tag: component
+              value: dns
+            - tag: software
+              value: bind
+          triggers:
+            - uuid: 2e178ddf3e9d48079e4135c6b8b94fd8
+              expression: 'change(/DNS bind/bind.version)=1'
+              name: 'BIND: version changed'
+              opdata: '{ITEM.VALUE}'
+              priority: INFO
+              manual_close: 'YES'
+              tags:
+                - tag: component
+                  value: dns
+                - tag: software
+                  value: bind
+      tags:
+        - tag: component
+          value: dns
+        - tag: software
+          value: bind
+      dashboards:
+        - uuid: 19ff87141e2c47f89df5f246e285ae58
+          name: Bind
+          display_period: '120'
+          pages:
+            - widgets:
+                - type: svggraph
+                  name: 'Bind requests'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Bind Requestv4: Total number of DNS requests received via IPv4 (UDP + TCP)'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Bind Requestv6: Total number of DNS requests received via IPv6 (UDP + TCP)'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: NTJBE
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Query Results AA bit'
+                  'y': '5'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Bind QryNoauthAns: Responses without the AA bit (recursive or from the cache)'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Bind QryAuthAns: Responses with the AA bit (Authoritative Answer)'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: QLBSE
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: TSIG
+                  'y': '10'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Bind ReqTSIG: Requests with TSIG authentication'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Bind RespTSIG: Responses with a TSIG (usually matches ReqTSIG)'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: WTOVU
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Problematic / Rejected Queries'
+                  'y': '15'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Bind QryDropped: Total number of rejected queries (most often due to rate limits)'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Bind QryFailure: Other query failures (SERVFAIL, etc., excluding NXDOMAIN)'
+                    - type: STRING
+                      name: ds.0.items.2
+                      value: 'Bind AuthQryRej: Rejected requests for authoritative zones'
+                    - type: STRING
+                      name: ds.0.items.3
+                      value: 'Bind RecQryRej: Rejected requests for recursive responses'
+                    - type: STRING
+                      name: ds.0.items.4
+                      value: 'Bind TruncatedResp: Responses for which the TC bit (truncated) was set'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: WCHLP
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Query protocol'
+                  'y': '20'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Bind QryTCP: Queries received via TCP'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Bind QryUDP: Queries received via UDP'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: ds.1.color
+                      value: FFD54F
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'Bind ReqTCP: Requests received via TCP'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: SIZNQ
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Bind Cookies'
+                  'y': '25'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '1'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Bind CookieBadTime: Cookie with an invalid expiration time (too old/too new)'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Bind CookieIn: Total number of received DNS cookies (RFC 7873)'
+                    - type: STRING
+                      name: ds.0.items.2
+                      value: 'Bind CookieMatch: Cookie successfully verified (status: good)'
+                    - type: STRING
+                      name: ds.0.items.3
+                      value: 'Bind CookieNew: The server generated a new cookie for the client (first contact)'
+                    - type: STRING
+                      name: ds.0.items.4
+                      value: 'Bind CookieNoMatch: The cookie does not match any known client'
+                    - type: STRING
+                      name: ds.0.items.5
+                      value: 'Bind QryBADCOOKIE: Responses with the BADCOOKIE (client resend the request with a new cookie)'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: VGLKH
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Query types 1'
+                  'y': '31'
+                  width: '36'
+                  height: '7'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Bind Query Type: AAAA records'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Bind Query Type: A records'
+                    - type: STRING
+                      name: ds.0.items.2
+                      value: 'Bind Query Type: HTTPS records'
+                    - type: STRING
+                      name: ds.0.items.3
+                      value: 'Bind Query Type: MX records'
+                    - type: STRING
+                      name: ds.0.items.4
+                      value: 'Bind Query Type: PTR records'
+                    - type: STRING
+                      name: ds.0.items.5
+                      value: 'Bind Query Type: TXT records'
+                    - type: STRING
+                      name: ds.0.items.6
+                      value: 'Bind Query Type: CNAME records'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: ds.1.color
+                      value: 13191C
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'Bind Response: Total number of responses submitted'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: MINFK
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: Responses
+                  x: '36'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '1'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Bind Response: Total number of responses submitted'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: DJLSJ
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Query Results'
+                  x: '36'
+                  'y': '5'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Bind QrySuccess: Successful queries = NOERROR + at least 1 record in the result set'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Bind QryNxrrset: NOERROR, but no records of that type'
+                    - type: STRING
+                      name: ds.0.items.2
+                      value: 'Bind QryNXDOMAIN: NXDOMAIN responses (name does not exist)'
+                    - type: STRING
+                      name: ds.0.items.3
+                      value: 'Bind QryReferral: Referral responses (delegation to other nameservers)'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: ZHBIB
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Zone transfers'
+                  x: '36'
+                  'y': '10'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Bind XfrRej: Rejected zone transfers (AXFR/IXFR)'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Bind XfrReqDone: Successfully completed zone transfers (AXFR/IXFR)'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: IFWEK
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Rate limiting'
+                  x: '36'
+                  'y': '15'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Bind RateDropped: Number of responses completely discarded due to rate limiting'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Bind RateSlipped: The number of responses for which the TC bit was set instead of being discarded'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: OMCKC
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: EDNS0
+                  x: '36'
+                  'y': '20'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '2'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Bind ReqEdns0: Requests that included EDNS0'
+                    - type: STRING
+                      name: ds.1.color
+                      value: FFD54F
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'Bind RespEDNS0: Responses sent with EDNS0'
+                    - type: STRING
+                      name: ds.2.color
+                      value: 0EC9AC
+                    - type: INTEGER
+                      name: ds.2.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.2.items.0
+                      value: 'Bind ECSOpt: EDNS Client Subnet (ECS)'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: JXPNU
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: item
+                  name: 'Bind version'
+                  x: '36'
+                  'y': '25'
+                  width: '18'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'DNS bind'
+                        key: bind.version
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: units_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: units_show
+                      value: '0'
+                - type: item
+                  name: 'Bind Boot Time'
+                  x: '36'
+                  'y': '27'
+                  width: '18'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '30'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'DNS bind'
+                        key: bind.boot-time
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: STRING
+                      name: units
+                      value: unixtime
+                    - type: INTEGER
+                      name: units_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: value_size
+                      value: '40'
+                - type: item
+                  name: 'Error message'
+                  x: '36'
+                  'y': '29'
+                  width: '36'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '30'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'DNS bind'
+                        key: bind.error_msg
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: units_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: units_show
+                      value: '0'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: value_size
+                      value: '40'
+                - type: svggraph
+                  name: 'Query types 2'
+                  x: '36'
+                  'y': '31'
+                  width: '36'
+                  height: '7'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.color_palette
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Bind Query Type: DNSKEY records'
+                    - type: STRING
+                      name: ds.0.items.1
+                      value: 'Bind Query Type: NS records'
+                    - type: STRING
+                      name: ds.0.items.2
+                      value: 'Bind Query Type: other types'
+                    - type: STRING
+                      name: ds.0.items.3
+                      value: 'Bind Query Type: SOA records'
+                    - type: STRING
+                      name: ds.0.items.4
+                      value: 'Bind Query Type: SRV records'
+                    - type: STRING
+                      name: ds.0.items.5
+                      value: 'Bind Query Type: SVCB records'
+                    - type: STRING
+                      name: ds.0.items.6
+                      value: 'Bind Query Type: DS records'
+                    - type: INTEGER
+                      name: ds.0.stacked
+                      value: '1'
+                    - type: STRING
+                      name: ds.1.color
+                      value: 13191C
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'Bind Response: Total number of responses submitted'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '10'
+                    - type: INTEGER
+                      name: legend_lines_mode
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: DLJSN
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: item
+                  name: TCPConnHighWater
+                  x: '54'
+                  'y': '25'
+                  width: '18'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: STRING
+                      name: description
+                      value: 'Maximum number of concurrent TCP connections'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'DNS bind'
+                        key: bind.nsstats.TCPConnHighWater
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: INTEGER
+                      name: show.1
+                      value: '2'
+                    - type: INTEGER
+                      name: units_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: units_show
+                      value: '0'
+                - type: item
+                  name: 'Bind Config Reload Time'
+                  x: '54'
+                  'y': '27'
+                  width: '18'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '30'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'DNS bind'
+                        key: bind.config-time
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: STRING
+                      name: units
+                      value: unixtime
+                    - type: INTEGER
+                      name: units_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '0'
+                    - type: INTEGER
+                      name: value_size
+                      value: '40'
+  graphs:
+    - uuid: 948e04ce1c994edf913d8258391d7853
+      name: 'DNS query types'
+      show_work_period: 'NO'
+      show_triggers: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 1A7C11
+          item:
+            host: 'DNS bind'
+            key: bind.qtypes.A
+        - sortorder: '1'
+          color: '274482'
+          item:
+            host: 'DNS bind'
+            key: bind.qtypes.AAAA
+        - sortorder: '2'
+          color: 89ABF8
+          item:
+            host: 'DNS bind'
+            key: bind.qtypes.CNAME
+        - sortorder: '3'
+          color: F63100
+          item:
+            host: 'DNS bind'
+            key: bind.qtypes.DNSKEY
+        - sortorder: '4'
+          color: 5A2B57
+          item:
+            host: 'DNS bind'
+            key: bind.qtypes.DS
+        - sortorder: '5'
+          color: 2774A4
+          item:
+            host: 'DNS bind'
+            key: bind.qtypes.HTTPS
+        - sortorder: '6'
+          color: A54F10
+          item:
+            host: 'DNS bind'
+            key: bind.qtypes.MX
+        - sortorder: '7'
+          color: FC6EA3
+          item:
+            host: 'DNS bind'
+            key: bind.qtypes.NS
+        - sortorder: '8'
+          color: 6C59DC
+          item:
+            host: 'DNS bind'
+            key: bind.qtypes.PTR
+        - sortorder: '9'
+          color: AC8C14
+          item:
+            host: 'DNS bind'
+            key: bind.qtypes.SOA
+        - sortorder: '10'
+          color: BB2A02
+          item:
+            host: 'DNS bind'
+            key: bind.qtypes.SRV
+        - sortorder: '11'
+          color: 611F27
+          item:
+            host: 'DNS bind'
+            key: bind.qtypes.SVCB
+        - sortorder: '12'
+          color: F230E0
+          item:
+            host: 'DNS bind'
+            key: bind.qtypes.TXT
+        - sortorder: '13'
+          color: 5CCD18
+          item:
+            host: 'DNS bind'
+            key: bind.qtypes.other

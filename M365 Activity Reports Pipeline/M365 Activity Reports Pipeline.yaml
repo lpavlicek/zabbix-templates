@@ -1,0 +1,1015 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: 'lpavlicek templates'
+  templates:
+    - uuid: abbd7c85c58a4b3bbefc5a8d787d6c14
+      template: 'M365 Activity Reports Pipeline'
+      name: 'M365 Activity Reports Pipeline'
+      description: |
+        Monitoring pipeline pro stahování a nahrávání M365 usage/activity reportů a reportu o přiřazených licencích do PostgreSQL/TimescaleDB (schema activity, sdílená databáze s m365logs).
+        
+        Data jsou sbírána přes zabbix_sender (push model, TLS/PSK) z Ubuntu serveru kde běží pipeline. Skript m365activity_monitor.sh volá m365activity_zabbix_data.pl který čte z DB a posílá JSON jako hodnotu master trapper itemu m365activity.data.
+        
+        Na rozdíl od M365 Sign-in Logs Pipeline zde neexistuje checkpoint (etl.fetch_state se nepoužívá) - klíčová metrika je doba od posledního úspěšného běhu loaderu (last_run_seconds_ago), VŽDY VE VTEŘINÁCH, ne v minutách.
+        
+        Zdroje dat:
+               etl.load_runs - status a statistiky běhů loaderu, source s prefixem activity_*
+      vendor:
+        name: lpavlicek
+        version: 7.4-1
+      groups:
+        - name: 'lpavlicek templates'
+      items:
+        - uuid: 4d47c6877d984e8f8bde28035104035f
+          name: 'M365 Apps Activations: status posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.apps_activations.last_run_ok
+          description: '1 = poslední nahrání úspěšné (success), 0 = selhalo nebo nikdy neběželo'
+          valuemap:
+            name: 'Nahrávání OK'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_apps_activations.last_run_ok
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: apps_activations
+          triggers:
+            - uuid: 4f046bf0f25546b094dd3139e29f1906
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.apps_activations.last_run_ok)=0'
+              name: 'M365 Activity M365 Apps Activations: poslední nahrání selhalo'
+              priority: AVERAGE
+              description: 'Poslední dokončený běh loaderu pro M365 Apps Activations skončil chybou nebo loader ještě nikdy neběžel. Zkontroluj /opt/m365activity/logs/cron_fetch_load_*.log, /opt/m365activity/logs/load_activity_reports.log a adresář /opt/m365activity/var/raw/error/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: apps_activations
+        - uuid: 93434d5ce5164c27b787ae557500cabf
+          name: 'M365 Apps Activations: doba od posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.apps_activations.last_run_seconds_ago
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_apps_activations.last_run_seconds_ago
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: apps_activations
+          triggers:
+            - uuid: 4d45fb4510a8440caf8882da2f2e47cc
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.apps_activations.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              name: 'M365 Activity M365 Apps Activations: data starší než {$M365ACTIVITY_STALE_HIGH}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: HIGH
+              description: 'Poslední úspěšný běh loaderu pro M365 Apps Activations je starší než {$M365ACTIVITY_STALE_HIGH}. Zkontroluj cron (m365activity_fetch_load_reports.sh) a /opt/m365activity/logs/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: apps_activations
+            - uuid: 4ed77d6580654184a3624021100db3b3
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.apps_activations.last_run_seconds_ago)>{$M365ACTIVITY_STALE_WARN}'
+              name: 'M365 Activity M365 Apps Activations: data starší než {$M365ACTIVITY_STALE_WARN}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: WARNING
+              description: 'Poslední úspěšný běh loaderu pro M365 Apps Activations je starší než {$M365ACTIVITY_STALE_WARN}.'
+              dependencies:
+                - name: 'M365 Activity M365 Apps Activations: data starší než {$M365ACTIVITY_STALE_HIGH}'
+                  expression: 'last(/M365 Activity Reports Pipeline/m365activity.apps_activations.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: apps_activations
+        - uuid: 390b8957ac4f4a4aae8724e0a7666d7c
+          name: 'M365 Apps Activations: počet nahrání dnes'
+          type: DEPENDENT
+          key: m365activity.apps_activations.loads_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_apps_activations.loads_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: apps_activations
+        - uuid: 476f762a581d4f64ac5f5faef09ba0fd
+          name: 'M365 Apps Activations: počet nahraných/aktualizovaných řádků dnes'
+          type: DEPENDENT
+          key: m365activity.apps_activations.rows_inserted_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_apps_activations.rows_inserted_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: apps_activations
+        - uuid: 46405be58216454a8fafced60624b617
+          name: 'M365 Apps Usage: status posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.apps_usage.last_run_ok
+          description: '1 = poslední nahrání úspěšné (success), 0 = selhalo nebo nikdy neběželo'
+          valuemap:
+            name: 'Nahrávání OK'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_apps_usage.last_run_ok
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: apps_usage
+          triggers:
+            - uuid: 26c4e5bfa04747bb9962c5812744990c
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.apps_usage.last_run_ok)=0'
+              name: 'M365 Activity M365 Apps Usage: poslední nahrání selhalo'
+              priority: AVERAGE
+              description: 'Poslední dokončený běh loaderu pro M365 Apps Usage skončil chybou nebo loader ještě nikdy neběžel. Zkontroluj /opt/m365activity/logs/cron_fetch_load_*.log, /opt/m365activity/logs/load_activity_reports.log a adresář /opt/m365activity/var/raw/error/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: apps_usage
+        - uuid: 9d5f789aed92483490eaf9c2b9d72813
+          name: 'M365 Apps Usage: doba od posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.apps_usage.last_run_seconds_ago
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_apps_usage.last_run_seconds_ago
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: apps_usage
+          triggers:
+            - uuid: 448817b8c50b41b59a2ac1a4c3e41fd8
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.apps_usage.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              name: 'M365 Activity M365 Apps Usage: data starší než {$M365ACTIVITY_STALE_HIGH}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: HIGH
+              description: 'Poslední úspěšný běh loaderu pro M365 Apps Usage je starší než {$M365ACTIVITY_STALE_HIGH}. Zkontroluj cron (m365activity_fetch_load_reports.sh) a /opt/m365activity/logs/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: apps_usage
+            - uuid: 3fbeee65de424352986995869a5f9308
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.apps_usage.last_run_seconds_ago)>{$M365ACTIVITY_STALE_WARN}'
+              name: 'M365 Activity M365 Apps Usage: data starší než {$M365ACTIVITY_STALE_WARN}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: WARNING
+              description: 'Poslední úspěšný běh loaderu pro M365 Apps Usage je starší než {$M365ACTIVITY_STALE_WARN}.'
+              dependencies:
+                - name: 'M365 Activity M365 Apps Usage: data starší než {$M365ACTIVITY_STALE_HIGH}'
+                  expression: 'last(/M365 Activity Reports Pipeline/m365activity.apps_usage.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: apps_usage
+        - uuid: 6b1a010075284b259aadd5e1b32db11c
+          name: 'M365 Apps Usage: počet nahrání dnes'
+          type: DEPENDENT
+          key: m365activity.apps_usage.loads_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_apps_usage.loads_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: apps_usage
+        - uuid: 55125bf469d0479d9d0b24cb396bdd66
+          name: 'M365 Apps Usage: počet nahraných/aktualizovaných řádků dnes'
+          type: DEPENDENT
+          key: m365activity.apps_usage.rows_inserted_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_apps_usage.rows_inserted_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: apps_usage
+        - uuid: 0ecd34fa29ed4c718d02b4d6dc6f63c7
+          name: 'Copilot Chat: status posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.copilot_chat.last_run_ok
+          description: '1 = poslední nahrání úspěšné (success), 0 = selhalo nebo nikdy neběželo'
+          valuemap:
+            name: 'Nahrávání OK'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_copilot_chat_activity.last_run_ok
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: copilot_chat_activity
+          triggers:
+            - uuid: 0fd1458c273742718831f4faa2f696eb
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.copilot_chat.last_run_ok)=0'
+              name: 'M365 Activity Copilot Chat: poslední nahrání selhalo'
+              priority: AVERAGE
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: copilot_chat_activity
+        - uuid: fc212c647dcf4a67af306d890cb85640
+          name: 'Copilot Chat: doba od posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.copilot_chat.last_run_seconds_ago
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_copilot_chat_activity.last_run_seconds_ago
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: copilot_chat_activity
+          triggers:
+            - uuid: 30183e7ee80a422183e89a2de0ebd579
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.copilot_chat.last_run_seconds_ago)>{$M365ACTIVITY_STALE_MONTHLY_HIGH}'
+              name: 'M365 Activity Copilot Chat: data starší než {$M365ACTIVITY_STALE_MONTHLY_HIGH}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: HIGH
+              description: 'Poslední úspěšný běh loaderu pro Copilot Chat Activity je starší než {$M365ACTIVITY_STALE_MONTHLY_HIGH}. Je potřeba stáhnout report z administrativního rozhraní a nahrát ho do var/run/pending.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: copilot_chat_activity
+            - uuid: 4d8e1493db0e4d4e82ec054d2391488a
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.copilot_chat.last_run_seconds_ago)>{$M365ACTIVITY_STALE_MONTHLY_WARN}'
+              name: 'M365 Activity Copilot Chat: data starší než {$M365ACTIVITY_STALE_MONTHLY_WARN}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: WARNING
+              description: |
+                Poslední úspěšný běh loaderu pro Copilot Chat Activity je starší než {$M365ACTIVITY_STALE_MONTHLY_WARN}.
+                Je potřeba stáhnout report z administrativního rozhraní a nahrát ho do var/run/pending.
+              dependencies:
+                - name: 'M365 Activity Copilot Chat: data starší než {$M365ACTIVITY_STALE_MONTHLY_HIGH}'
+                  expression: 'last(/M365 Activity Reports Pipeline/m365activity.copilot_chat.last_run_seconds_ago)>{$M365ACTIVITY_STALE_MONTHLY_HIGH}'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: copilot_chat_activity
+        - uuid: 50ea295af6c44326be131655a3fbf7c2
+          name: 'Copilot Chat: počet nahrání dnes'
+          type: DEPENDENT
+          key: m365activity.copilot_chat.loads_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_copilot_chat_activity.loads_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: copilot_chat_activity
+        - uuid: a012427e70ab4ecfb721016c2bdb9bf1
+          name: 'Copilot Chat: počet nahraných/aktualizovaných řádků dnes'
+          type: DEPENDENT
+          key: m365activity.copilot_chat.rows_inserted_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_copilot_chat_activity.rows_inserted_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: copilot_chat_activity
+        - uuid: 829e7b130fa7401f8bca90e178c228ec
+          name: 'Copilot Usage: status posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.copilot_usage.last_run_ok
+          description: '1 = poslední nahrání úspěšné (success), 0 = selhalo nebo nikdy neběželo'
+          valuemap:
+            name: 'Nahrávání OK'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_copilot_usage.last_run_ok
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: copilot_usage
+          triggers:
+            - uuid: 8fd6a6110ad545e4b587879923405351
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.copilot_usage.last_run_ok)=0'
+              name: 'M365 Activity Copilot Usage: poslední nahrání selhalo'
+              priority: AVERAGE
+              description: 'Poslední dokončený běh loaderu pro Copilot Usage skončil chybou nebo loader ještě nikdy neběžel. Zkontroluj /opt/m365activity/logs/cron_fetch_load_*.log, /opt/m365activity/logs/load_activity_reports.log a adresář /opt/m365activity/var/raw/error/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: copilot_usage
+        - uuid: 601d870ce70147bd8a7523d5019bf014
+          name: 'Copilot Usage: doba od posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.copilot_usage.last_run_seconds_ago
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_copilot_usage.last_run_seconds_ago
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: copilot_usage
+          triggers:
+            - uuid: b973102a0d1540ceb772ce9a674f529f
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.copilot_usage.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              name: 'M365 Activity Copilot Usage: data starší než {$M365ACTIVITY_STALE_HIGH}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: HIGH
+              description: 'Poslední úspěšný běh loaderu pro Copilot Usage je starší než {$M365ACTIVITY_STALE_HIGH}. Zkontroluj cron (m365activity_fetch_load_reports.sh) a /opt/m365activity/logs/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: copilot_usage
+            - uuid: 45f20890f1ed421b885051a2c8a787f1
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.copilot_usage.last_run_seconds_ago)>{$M365ACTIVITY_STALE_WARN}'
+              name: 'M365 Activity Copilot Usage: data starší než {$M365ACTIVITY_STALE_WARN}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: WARNING
+              description: 'Poslední úspěšný běh loaderu pro Copilot Usage je starší než {$M365ACTIVITY_STALE_WARN}.'
+              dependencies:
+                - name: 'M365 Activity Copilot Usage: data starší než {$M365ACTIVITY_STALE_HIGH}'
+                  expression: 'last(/M365 Activity Reports Pipeline/m365activity.copilot_usage.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: copilot_usage
+        - uuid: 7693eda5c0334ee89b82cf73b0422801
+          name: 'Copilot Usage: počet nahrání dnes'
+          type: DEPENDENT
+          key: m365activity.copilot_usage.loads_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_copilot_usage.loads_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: copilot_usage
+        - uuid: 0b070fc511634a83ad5fc714d31cb7bd
+          name: 'Copilot Usage: počet nahraných/aktualizovaných řádků dnes'
+          type: DEPENDENT
+          key: m365activity.copilot_usage.rows_inserted_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_copilot_usage.rows_inserted_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: copilot_usage
+        - uuid: caaaf6b026a64f58af8e875592c5c210
+          name: 'M365 Activity monitoring data (raw JSON)'
+          type: TRAP
+          key: m365activity.data
+          history: '0'
+          value_type: TEXT
+          description: 'Master item. Přijímá JSON payload z m365activity_monitor.sh přes zabbix_sender. Všechny ostatní itemy jsou Dependent items odvozené z tohoto JSONu. Hodnoty jsou VE VTEŘINÁCH.'
+          tags:
+            - tag: component
+              value: pipeline
+            - tag: stage
+              value: raw
+        - uuid: 2c00852e29654d3083951949f1c6945e
+          name: 'Email Activity: status posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.email_activity.last_run_ok
+          description: '1 = poslední nahrání úspěšné (success), 0 = selhalo nebo nikdy neběželo'
+          valuemap:
+            name: 'Nahrávání OK'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_email_activity.last_run_ok
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: email_activity
+          triggers:
+            - uuid: a10cecb7ca3b411abbdd399585904dc1
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.email_activity.last_run_ok)=0'
+              name: 'M365 Activity Email Activity: poslední nahrání selhalo'
+              priority: AVERAGE
+              description: 'Poslední dokončený běh loaderu pro Email Activity skončil chybou nebo loader ještě nikdy neběžel. Zkontroluj /opt/m365activity/logs/cron_fetch_load_*.log, /opt/m365activity/logs/load_activity_reports.log a adresář /opt/m365activity/var/raw/error/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: email_activity
+        - uuid: ab850c11a65d4dc19a349c57642cae90
+          name: 'Email Activity: doba od posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.email_activity.last_run_seconds_ago
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_email_activity.last_run_seconds_ago
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: email_activity
+          triggers:
+            - uuid: 256748cc81a444c4ad84786211a9b99c
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.email_activity.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              name: 'M365 Activity Email Activity: data starší než {$M365ACTIVITY_STALE_HIGH}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: HIGH
+              description: 'Poslední úspěšný běh loaderu pro Email Activity je starší než {$M365ACTIVITY_STALE_HIGH}. Zkontroluj cron (m365activity_fetch_load_reports.sh) a /opt/m365activity/logs/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: email_activity
+            - uuid: f28fde66db684912b793be30aa672100
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.email_activity.last_run_seconds_ago)>{$M365ACTIVITY_STALE_WARN}'
+              name: 'M365 Activity Email Activity: data starší než {$M365ACTIVITY_STALE_WARN}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: WARNING
+              description: 'Poslední úspěšný běh loaderu pro Email Activity je starší než {$M365ACTIVITY_STALE_WARN}.'
+              dependencies:
+                - name: 'M365 Activity Email Activity: data starší než {$M365ACTIVITY_STALE_HIGH}'
+                  expression: 'last(/M365 Activity Reports Pipeline/m365activity.email_activity.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: email_activity
+        - uuid: e08b5670727340259673814a0e97a993
+          name: 'Email Activity: počet nahrání dnes'
+          type: DEPENDENT
+          key: m365activity.email_activity.loads_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_email_activity.loads_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: email_activity
+        - uuid: 32785862223e4a3d94c22461eae0e593
+          name: 'Email Activity: počet nahraných/aktualizovaných řádků dnes'
+          type: DEPENDENT
+          key: m365activity.email_activity.rows_inserted_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_email_activity.rows_inserted_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: email_activity
+        - uuid: 487aff7075b84a1aaf1c349b24f81516
+          name: 'User Licence Assignment: status posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.license.last_run_ok
+          description: '1 = poslední nahrání úspěšné (success), 0 = selhalo nebo nikdy neběželo'
+          valuemap:
+            name: 'Nahrávání OK'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_license.last_run_ok
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: license
+          triggers:
+            - uuid: 6c66bf9cb00f49169a3b689f57306c93
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.license.last_run_ok)=0'
+              name: 'M365 Activity User Licence Assignment: poslední nahrání selhalo'
+              priority: AVERAGE
+              description: 'Poslední dokončený běh loaderu pro User Licence Assignment skončil chybou nebo loader ještě nikdy neběžel. Zkontroluj /opt/m365activity/logs/cron_fetch_load_*.log, /opt/m365activity/logs/load_activity_reports.log a adresář /opt/m365activity/var/raw/error/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: license
+        - uuid: dc2ceb2d68e64e41b23853867cf3d362
+          name: 'User Licence Assignment: doba od posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.license.last_run_seconds_ago
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_license.last_run_seconds_ago
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: license
+          triggers:
+            - uuid: 826d5ae1f32148769f168f1bfd1a5a5d
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.license.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              name: 'M365 Activity User Licence Assignment: data starší než {$M365ACTIVITY_STALE_HIGH}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: HIGH
+              description: 'Poslední úspěšný běh loaderu pro User Licence Assignment je starší než {$M365ACTIVITY_STALE_HIGH}. Zkontroluj cron (m365activity_fetch_load_license.sh) a /opt/m365activity/logs/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: license
+            - uuid: 20f2ddcadbda403eb674156ba36f82a3
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.license.last_run_seconds_ago)>{$M365ACTIVITY_STALE_WARN}'
+              name: 'M365 Activity User Licence Assignment: data starší než {$M365ACTIVITY_STALE_WARN}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: WARNING
+              description: 'Poslední úspěšný běh loaderu pro User Licence Assignment je starší než {$M365ACTIVITY_STALE_WARN}.'
+              dependencies:
+                - name: 'M365 Activity User Licence Assignment: data starší než {$M365ACTIVITY_STALE_HIGH}'
+                  expression: 'last(/M365 Activity Reports Pipeline/m365activity.license.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: license
+        - uuid: 76c9324172554665a7fabc97258dfc6a
+          name: 'User Licence Assignment: počet nahrání dnes'
+          type: DEPENDENT
+          key: m365activity.license.loads_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_license.loads_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: license
+        - uuid: 9d83f35b8fd04f7bbe7a1b669fd7e07d
+          name: 'User Licence Assignment: počet změn licencí dnes'
+          type: DEPENDENT
+          key: m365activity.license.rows_conflict_today
+          description: 'Počet uživatelů, kterým se dnes zjistila změna assigned_skus (viz activity.license_assignment_history). Tento item existuje jen u license reportu - u ostatních reportů koncept konfliktu nedava smysl.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_license.rows_conflict_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: license
+        - uuid: 13d1a32dac39464b912305e3297e9ac4
+          name: 'User Licence Assignment: počet nahraných/aktualizovaných řádků dnes'
+          type: DEPENDENT
+          key: m365activity.license.rows_inserted_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_license.rows_inserted_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: license
+        - uuid: 28bf666c4f28433288050661dd9cab33
+          name: 'OneDrive Activity: status posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.onedrive_activity.last_run_ok
+          description: '1 = poslední nahrání úspěšné (success), 0 = selhalo nebo nikdy neběželo'
+          valuemap:
+            name: 'Nahrávání OK'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_onedrive_activity.last_run_ok
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: onedrive_activity
+          triggers:
+            - uuid: 1dfe753cde754c7fad515ee1122719de
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.onedrive_activity.last_run_ok)=0'
+              name: 'M365 Activity OneDrive Activity: poslední nahrání selhalo'
+              priority: AVERAGE
+              description: 'Poslední dokončený běh loaderu pro OneDrive Activity skončil chybou nebo loader ještě nikdy neběžel. Zkontroluj /opt/m365activity/logs/cron_fetch_load_*.log, /opt/m365activity/logs/load_activity_reports.log a adresář /opt/m365activity/var/raw/error/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: onedrive_activity
+        - uuid: cd486774418f415ab327096daafca971
+          name: 'OneDrive Activity: doba od posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.onedrive_activity.last_run_seconds_ago
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_onedrive_activity.last_run_seconds_ago
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: onedrive_activity
+          triggers:
+            - uuid: 3ac69a20486f41e6840c650ce446d28f
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.onedrive_activity.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              name: 'M365 Activity OneDrive Activity: data starší než {$M365ACTIVITY_STALE_HIGH}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: HIGH
+              description: 'Poslední úspěšný běh loaderu pro OneDrive Activity je starší než {$M365ACTIVITY_STALE_HIGH}. Zkontroluj cron (m365activity_fetch_load_reports.sh) a /opt/m365activity/logs/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: onedrive_activity
+            - uuid: a06025b7d18342bd99343d9760dd82e8
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.onedrive_activity.last_run_seconds_ago)>{$M365ACTIVITY_STALE_WARN}'
+              name: 'M365 Activity OneDrive Activity: data starší než {$M365ACTIVITY_STALE_WARN}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: WARNING
+              description: 'Poslední úspěšný běh loaderu pro OneDrive Activity je starší než {$M365ACTIVITY_STALE_WARN}.'
+              dependencies:
+                - name: 'M365 Activity OneDrive Activity: data starší než {$M365ACTIVITY_STALE_HIGH}'
+                  expression: 'last(/M365 Activity Reports Pipeline/m365activity.onedrive_activity.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: onedrive_activity
+        - uuid: 0ec4055238ee4c4f9b466cc026527253
+          name: 'OneDrive Activity: počet nahrání dnes'
+          type: DEPENDENT
+          key: m365activity.onedrive_activity.loads_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_onedrive_activity.loads_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: onedrive_activity
+        - uuid: 887f2e278c854a699c35c4a5f312ddc6
+          name: 'OneDrive Activity: počet nahraných/aktualizovaných řádků dnes'
+          type: DEPENDENT
+          key: m365activity.onedrive_activity.rows_inserted_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_onedrive_activity.rows_inserted_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: onedrive_activity
+        - uuid: 2e451d8e698746b5af63f1d4ecc0e559
+          name: 'SharePoint Activity: status posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.sharepoint_activity.last_run_ok
+          description: '1 = poslední nahrání úspěšné (success), 0 = selhalo nebo nikdy neběželo'
+          valuemap:
+            name: 'Nahrávání OK'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_sharepoint_activity.last_run_ok
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: sharepoint_activity
+          triggers:
+            - uuid: de1c179628464596a39d47d0b555e442
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.sharepoint_activity.last_run_ok)=0'
+              name: 'M365 Activity SharePoint Activity: poslední nahrání selhalo'
+              priority: AVERAGE
+              description: 'Poslední dokončený běh loaderu pro SharePoint Activity skončil chybou nebo loader ještě nikdy neběžel. Zkontroluj /opt/m365activity/logs/cron_fetch_load_*.log, /opt/m365activity/logs/load_activity_reports.log a adresář /opt/m365activity/var/raw/error/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: sharepoint_activity
+        - uuid: 4194f8352067410fb4fde2725f6adb4b
+          name: 'SharePoint Activity: doba od posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.sharepoint_activity.last_run_seconds_ago
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_sharepoint_activity.last_run_seconds_ago
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: sharepoint_activity
+          triggers:
+            - uuid: 3d1d9a0e4d664eca8002fa6f47182b39
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.sharepoint_activity.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              name: 'M365 Activity SharePoint Activity: data starší než {$M365ACTIVITY_STALE_HIGH}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: HIGH
+              description: 'Poslední úspěšný běh loaderu pro SharePoint Activity je starší než {$M365ACTIVITY_STALE_HIGH}. Zkontroluj cron (m365activity_fetch_load_reports.sh) a /opt/m365activity/logs/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: sharepoint_activity
+            - uuid: d737cb41a67c462a9d5ab86eb4a6d50f
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.sharepoint_activity.last_run_seconds_ago)>{$M365ACTIVITY_STALE_WARN}'
+              name: 'M365 Activity SharePoint Activity: data starší než {$M365ACTIVITY_STALE_WARN}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: WARNING
+              description: 'Poslední úspěšný běh loaderu pro SharePoint Activity je starší než {$M365ACTIVITY_STALE_WARN}.'
+              dependencies:
+                - name: 'M365 Activity SharePoint Activity: data starší než {$M365ACTIVITY_STALE_HIGH}'
+                  expression: 'last(/M365 Activity Reports Pipeline/m365activity.sharepoint_activity.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: sharepoint_activity
+        - uuid: e5c11346121c49369a20c25ed7b75f26
+          name: 'SharePoint Activity: počet nahrání dnes'
+          type: DEPENDENT
+          key: m365activity.sharepoint_activity.loads_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_sharepoint_activity.loads_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: sharepoint_activity
+        - uuid: 131125ec4e044aba95df5889b1118463
+          name: 'SharePoint Activity: počet nahraných/aktualizovaných řádků dnes'
+          type: DEPENDENT
+          key: m365activity.sharepoint_activity.rows_inserted_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_sharepoint_activity.rows_inserted_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: sharepoint_activity
+        - uuid: e7e10e944f6c487fbe8ccadd0025f3f8
+          name: 'Teams User Activity: status posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.teams_activity.last_run_ok
+          description: '1 = poslední nahrání úspěšné (success), 0 = selhalo nebo nikdy neběželo'
+          valuemap:
+            name: 'Nahrávání OK'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_teams_activity.last_run_ok
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: teams_activity
+          triggers:
+            - uuid: d29a7dd6195240bfb157d40caccf30b8
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.teams_activity.last_run_ok)=0'
+              name: 'M365 Activity Teams User Activity: poslední nahrání selhalo'
+              priority: AVERAGE
+              description: 'Poslední dokončený běh loaderu pro Teams User Activity skončil chybou nebo loader ještě nikdy neběžel. Zkontroluj /opt/m365activity/logs/cron_fetch_load_*.log, /opt/m365activity/logs/load_activity_reports.log a adresář /opt/m365activity/var/raw/error/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: teams_activity
+        - uuid: 9b5ce90526fa417ba8f39898766a1bb5
+          name: 'Teams User Activity: doba od posledního nahrání'
+          type: DEPENDENT
+          key: m365activity.teams_activity.last_run_seconds_ago
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_teams_activity.last_run_seconds_ago
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: teams_activity
+          triggers:
+            - uuid: cfb3ec8053d64427b73e83113bb39314
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.teams_activity.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              name: 'M365 Activity Teams User Activity: data starší než {$M365ACTIVITY_STALE_HIGH}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: HIGH
+              description: 'Poslední úspěšný běh loaderu pro Teams User Activity je starší než {$M365ACTIVITY_STALE_HIGH}. Zkontroluj cron (m365activity_fetch_load_reports.sh) a /opt/m365activity/logs/.'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: teams_activity
+            - uuid: 2696bbfcb0114ec49543f4c0383f7a4b
+              expression: 'last(/M365 Activity Reports Pipeline/m365activity.teams_activity.last_run_seconds_ago)>{$M365ACTIVITY_STALE_WARN}'
+              name: 'M365 Activity Teams User Activity: data starší než {$M365ACTIVITY_STALE_WARN}'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: WARNING
+              description: 'Poslední úspěšný běh loaderu pro Teams User Activity je starší než {$M365ACTIVITY_STALE_WARN}.'
+              dependencies:
+                - name: 'M365 Activity Teams User Activity: data starší než {$M365ACTIVITY_STALE_HIGH}'
+                  expression: 'last(/M365 Activity Reports Pipeline/m365activity.teams_activity.last_run_seconds_ago)>{$M365ACTIVITY_STALE_HIGH}'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: source
+                  value: teams_activity
+        - uuid: 8f36b957d67a41778ef09377eb8f6cc0
+          name: 'Teams User Activity: počet nahrání dnes'
+          type: DEPENDENT
+          key: m365activity.teams_activity.loads_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_teams_activity.loads_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: teams_activity
+        - uuid: 00f09d3cc85b4d78951925ec037c2fb7
+          name: 'Teams User Activity: počet nahraných/aktualizovaných řádků dnes'
+          type: DEPENDENT
+          key: m365activity.teams_activity.rows_inserted_today
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.activity_teams_activity.rows_inserted_today
+          master_item:
+            key: m365activity.data
+          tags:
+            - tag: source
+              value: teams_activity
+      tags:
+        - tag: class
+          value: software
+        - tag: target
+          value: m365activity
+      macros:
+        - macro: '{$M365ACTIVITY_STALE_HIGH}'
+          value: 50h
+          description: 'Kriticka stalost dat - posledni uspesny beh je starsi nez tato hodnota (default: 50 hodin, pokryje vypadek celeho jednoho cyklu pri 1x denne cronu)'
+        - macro: '{$M365ACTIVITY_STALE_MONTHLY_HIGH}'
+          value: 35d
+          description: 'Kriticka stalost dat aktualizovaných měsíčně (Copilot Chat - ruční stahování z admin centra, default: 35 dnů)'
+        - macro: '{$M365ACTIVITY_STALE_MONTHLY_WARN}'
+          value: 28d
+          description: 'Varovna stalost dat aktualizovaných měsíčně (Copilot Chat - ruční stahování z admin centra, default: 28 dnů)'
+        - macro: '{$M365ACTIVITY_STALE_WARN}'
+          value: 26h
+          description: 'Varovna stalost dat - vetsi nez interval mezi behy (1x denne, tj. 24h) s rezervou (default: 26 hodin)'
+      valuemaps:
+        - uuid: 5109d36301b34655acff0dc0ebc73906
+          name: 'Nahrávání OK'
+          mappings:
+            - value: '0'
+              newvalue: bad
+            - value: '1'
+              newvalue: success
+  graphs:
+    - uuid: b2b9e2c08fb743d6b52a15a8235db48d
+      name: 'Doba od posledního nahrání (všechny reporty)'
+      show_work_period: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 4CAF50
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.email_activity.last_run_seconds_ago
+        - color: 2196F3
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.apps_usage.last_run_seconds_ago
+        - color: FF9800
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.onedrive_activity.last_run_seconds_ago
+        - color: 9C27B0
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.sharepoint_activity.last_run_seconds_ago
+        - color: 00BCD4
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.teams_activity.last_run_seconds_ago
+        - color: '795548'
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.apps_activations.last_run_seconds_ago
+        - color: E91E63
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.copilot_usage.last_run_seconds_ago
+        - color: 607D8B
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.copilot_chat.last_run_seconds_ago
+        - color: FFC107
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.license.last_run_seconds_ago
+    - uuid: 11854b9f9c8847ecb7ddb2bdd5a22292
+      name: 'Počet nahraných/aktualizovaných řádků dnes (všechny reporty)'
+      show_work_period: 'NO'
+      ymin_type_1: FIXED
+      graph_items:
+        - color: 4CAF50
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.email_activity.rows_inserted_today
+        - color: 2196F3
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.apps_usage.rows_inserted_today
+        - color: FF9800
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.onedrive_activity.rows_inserted_today
+        - color: 9C27B0
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.sharepoint_activity.rows_inserted_today
+        - color: 00BCD4
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.teams_activity.rows_inserted_today
+        - color: '795548'
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.apps_activations.rows_inserted_today
+        - color: E91E63
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.copilot_usage.rows_inserted_today
+        - color: 607D8B
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.copilot_chat.rows_inserted_today
+        - color: FFC107
+          calc_fnc: ALL
+          item:
+            host: 'M365 Activity Reports Pipeline'
+            key: m365activity.license.rows_inserted_today
