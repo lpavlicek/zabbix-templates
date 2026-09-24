@@ -10,7 +10,7 @@ zabbix_export:
       description: 'Monitorování využití S3 kompatibilního úložiště pomocí s3cmd'
       vendor:
         name: lpavlicek
-        version: 7.4-2
+        version: 7.4-4
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -33,7 +33,8 @@ zabbix_export:
           triggers:
             - uuid: 4b9deef2990f46f1a9aac1cb6bb37fd9
               expression: 'last(/S3 Storage Usage/s3.objects.percent)>{$S3.HIGH_PERCENT}'
-              name: 'S3 Objects count is critical ({ITEM.LASTVALUE}%)'
+              name: 'S3 Objects count is critical'
+              opdata: 'Využito: {ITEM.LASTVALUE1}'
               priority: HIGH
               description: 'S3 objects count exceeded critical threshold of {$S3.HIGH_PERCENT}%'
               tags:
@@ -43,10 +44,14 @@ zabbix_export:
                   value: capacity
             - uuid: b9a03b758a4541e59af7da8582222137
               expression: 'last(/S3 Storage Usage/s3.objects.percent)>{$S3.WARNING_PERCENT}'
-              name: 'S3 Objects count is high ({ITEM.LASTVALUE}%)'
+              name: 'S3 Objects count is high'
+              opdata: 'Využito: {ITEM.LASTVALUE1}'
               priority: WARNING
               description: 'S3 objects count exceeded warning threshold of {$S3.WARNING_PERCENT}%'
               manual_close: 'YES'
+              dependencies:
+                - name: 'S3 Objects count is critical'
+                  expression: 'last(/S3 Storage Usage/s3.objects.percent)>{$S3.HIGH_PERCENT}'
               tags:
                 - tag: component
                   value: storage
@@ -59,6 +64,10 @@ zabbix_export:
           units: B
           description: 'Celková velikost všech dat v S3 úložišti'
           preprocessing:
+            - type: CHECK_REGEX_ERROR
+              parameters:
+                - '^ERROR:\s*(.+)'
+                - \1
             - type: REGEX
               parameters:
                 - (\d+)\s+Total
@@ -66,9 +75,9 @@ zabbix_export:
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
           master_item:
-            key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+            key: 's3_usage_check.sh[{$S3.CONFIG_FILE},{$S3.TIMEOUT}]'
           tags:
-            - tag: coomponent
+            - tag: component
               value: s3_storage
         - uuid: c3b63d8808114fe09f01e94f4557c47b
           name: 'S3 Total Objects Count'
@@ -76,25 +85,26 @@ zabbix_export:
           key: s3.total.objects
           description: 'Celkový počet objektů ve všech bucketech'
           preprocessing:
+            - type: CHECK_REGEX_ERROR
+              parameters:
+                - '^ERROR:\s*(.+)'
+                - \1
             - type: JAVASCRIPT
               parameters:
                 - |
                   var lines = value.split('\n');
                   var totalObjects = 0;
-                                    
+
                   for (var i = 0; i < lines.length; i++) {
-                     var line = lines[i].trim();
-                     if (line.match(/^\d+\s+\d+\s+objects\s+s3:\/\//)) {
-                         var match = line.match(/^\d+\s+(\d+)\s+objects/);
-                         if (match) {
-                             totalObjects += parseInt(match[1]);
-                          }
-                     }
+                      var match = lines[i].trim().match(/^\d+\s+(\d+)\s+objects\s+s3:\/\//);
+                      if (match) {
+                          totalObjects += parseInt(match[1], 10);
+                      }
                   }
-                                    
+
                   return totalObjects;
           master_item:
-            key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+            key: 's3_usage_check.sh[{$S3.CONFIG_FILE},{$S3.TIMEOUT}]'
           tags:
             - tag: component
               value: s3_storage
@@ -117,7 +127,8 @@ zabbix_export:
           triggers:
             - uuid: 35028d8c907045d299f672847093afd8
               expression: 'last(/S3 Storage Usage/s3.usage.percent)>{$S3.HIGH_PERCENT}'
-              name: 'S3 Storage usage is critical ({ITEM.LASTVALUE}%)'
+              name: 'S3 Storage usage is critical'
+              opdata: 'Využito: {ITEM.LASTVALUE1}'
               priority: HIGH
               description: 'S3 storage usage exceeded critical threshold of {$S3.HIGH_PERCENT}%'
               tags:
@@ -127,10 +138,14 @@ zabbix_export:
                   value: capacity
             - uuid: e0f796f774404381b0f29176e1deb17d
               expression: 'last(/S3 Storage Usage/s3.usage.percent)>{$S3.WARNING_PERCENT}'
-              name: 'S3 Storage usage is high ({ITEM.LASTVALUE}%)'
+              name: 'S3 Storage usage is high'
+              opdata: 'Využito: {ITEM.LASTVALUE1}'
               priority: WARNING
               description: 'S3 storage usage exceeded warning threshold of {$S3.WARNING_PERCENT}%'
               manual_close: 'YES'
+              dependencies:
+                - name: 'S3 Storage usage is critical'
+                  expression: 'last(/S3 Storage Usage/s3.usage.percent)>{$S3.HIGH_PERCENT}'
               tags:
                 - tag: component
                   value: storage
@@ -139,21 +154,38 @@ zabbix_export:
         - uuid: e19fb9bd9b4a43c683ccc2eb418933d8
           name: 'S3 Storage Raw Data'
           type: EXTERNAL
-          key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+          key: 's3_usage_check.sh[{$S3.CONFIG_FILE},{$S3.TIMEOUT}]'
           delay: 1h
           history: 7d
           value_type: TEXT
-          description: 'Raw výstup z příkazu s3cmd du'
-          timeout: 6s
+          description: |
+            Raw výstup z příkazu s3cmd du.
+            Skript si sám hlídá čas (coreutils timeout, o 5 s kratší než {$S3.TIMEOUT}) a při chybě
+            vrací text "ERROR: ..." s návratovým kódem 0, aby chyba dorazila jako hodnota.
+          timeout: '{$S3.TIMEOUT}'
           tags:
             - tag: component
               value: s3_storage
           triggers:
             - uuid: 9ec75316541a43bfb69b5161d9a14919
-              expression: 'find(/S3 Storage Usage/s3_usage_check.sh[{$S3.CONFIG_FILE}],,"regexp","ERROR:")=1'
+              expression: 'find(/S3 Storage Usage/s3_usage_check.sh[{$S3.CONFIG_FILE},{$S3.TIMEOUT}],,"regexp","^ERROR:")=1'
               name: 'S3 Storage monitoring failed'
+              opdata: '{ITEM.LASTVALUE1}'
               priority: HIGH
-              description: 'S3 storage monitoring script returned error'
+              description: 'Skript s3_usage_check.sh vrátil chybu (nedostupné úložiště, timeout s3cmd, chybná konfigurace). Text chyby je v operačních datech.'
+              tags:
+                - tag: component
+                  value: storage
+                - tag: scope
+                  value: availability
+            - uuid: 41dd3e82fc4d439588b4cbc55bab2c81
+              expression: 'nodata(/S3 Storage Usage/s3_usage_check.sh[{$S3.CONFIG_FILE},{$S3.TIMEOUT}],{$S3.NODATA_PERIOD})=1'
+              name: 'S3 Storage monitoring: no data for {$S3.NODATA_PERIOD}'
+              priority: HIGH
+              description: |
+                Položka S3 Storage Raw Data nedostala žádnou hodnotu déle než {$S3.NODATA_PERIOD}.
+                Typicky: skript byl ukončen timeoutem Zabbixu (položka je unsupported), skript chybí
+                nebo není spustitelný, přetížené pollery. Detail chyby je u položky v Latest data.
               tags:
                 - tag: component
                   value: storage
@@ -172,12 +204,16 @@ zabbix_export:
               key: 's3.bucket.objects[{#BUCKET_NAME}]'
               description: 'Počet objektů v bucketu {#BUCKET_NAME}'
               preprocessing:
+                - type: CHECK_REGEX_ERROR
+                  parameters:
+                    - '^ERROR:\s*(.+)'
+                    - \1
                 - type: REGEX
                   parameters:
                     - '\d+\s+(\d+)\s+objects\s+s3://{#BUCKET_NAME}/'
                     - \1
               master_item:
-                key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+                key: 's3_usage_check.sh[{$S3.CONFIG_FILE},{$S3.TIMEOUT}]'
               tags:
                 - tag: component
                   value: s3_storage
@@ -188,6 +224,10 @@ zabbix_export:
               units: B
               description: 'Velikost bucketu {#BUCKET_NAME} v bytech'
               preprocessing:
+                - type: CHECK_REGEX_ERROR
+                  parameters:
+                    - '^ERROR:\s*(.+)'
+                    - \1
                 - type: REGEX
                   parameters:
                     - '(\d+)\s+\d+\s+objects\s+s3://{#BUCKET_NAME}/'
@@ -195,7 +235,7 @@ zabbix_export:
                   error_handler: CUSTOM_VALUE
                   error_handler_params: '0'
               master_item:
-                key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+                key: 's3_usage_check.sh[{$S3.CONFIG_FILE},{$S3.TIMEOUT}]'
               tags:
                 - tag: component
                   value: s3_storage
@@ -223,26 +263,31 @@ zabbix_export:
                     host: 'S3 Storage Usage'
                     key: 's3.bucket.size[{#BUCKET_NAME}]'
           master_item:
-            key: 's3_usage_check.sh[{$S3.CONFIG_FILE}]'
+            key: 's3_usage_check.sh[{$S3.CONFIG_FILE},{$S3.TIMEOUT}]'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
                 - |
+                  // Chyba ze skriptu: LLD skončí chybou a neoznačí buckety jako ztracené
+                  if (/^ERROR:/.test(value)) {
+                      throw value.split('\n')[0].replace(/^ERROR:\s*/, '');
+                  }
+                  
                   var lines = value.split('\n');
                   var buckets = [];
-                                    
+
                   for (var i = 0; i < lines.length; i++) {
                       var line = lines[i].trim();
                       if (line.match(/^\d+\s+\d+\s+objects\s+s3:\/\//)) {
-                           var match = line.match(/s3:\/\/([^\/]+)\//);
-                           if (match) {
-                               buckets.push({
-                                   '{#BUCKET_NAME}': match[1]
-                               });
-                           }
+                          var match = line.match(/s3:\/\/([^\/]+)\//);
+                          if (match) {
+                              buckets.push({
+                                  '{#BUCKET_NAME}': match[1]
+                              });
+                          }
                       }
                   }
-                                    
+
                   return JSON.stringify(buckets);
       tags:
         - tag: component
@@ -260,6 +305,12 @@ zabbix_export:
         - macro: '{$S3.MAX_OBJECTS}'
           value: '1000000'
           description: 'Maximální počet objektů v S3 úložišti'
+        - macro: '{$S3.NODATA_PERIOD}'
+          value: 3h
+          description: 'Po jak dlouhé době bez hodnoty raw položky se vyvolá trigger "no data". Interval položky je 1h, 3h = 2–3 nezískané hodnoty.'
+        - macro: '{$S3.TIMEOUT}'
+          value: 60s
+          description: 'Timeout položky S3 Storage Raw Data (1s–600s, formát Ns nebo Nm). Skript ukončí s3cmd o 5 s dříve a vrátí "ERROR: timeout".'
         - macro: '{$S3.WARNING_PERCENT}'
           value: '75'
           description: 'Procento při kterém se zobrazí warning'
