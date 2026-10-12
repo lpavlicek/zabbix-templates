@@ -1,0 +1,21 @@
+#!/bin/sh
+# Dump syslog-ng statistics for the Zabbix template "syslog-ng by Zabbix agent 2".
+# Install to /usr/local/sbin/syslogng-stats-dump (root:root 0755), run as root from cron every minute.
+#
+# The output file is world-readable (0644) and is read by the Zabbix agent via vfs.file.contents[].
+# It contains only syslog-ng counters (no log content). If syslog-ng-ctl fails, its error message
+# is written instead, which the template detects ("Statistics status" item).
+#
+# The target directory must be owned by root and not writable by others, so that no other user
+# can replace the file or plant a symlink. The file is replaced atomically (mktemp + mv), so the
+# agent never reads a partially written file.
+
+CTL=/usr/sbin/syslog-ng-ctl
+DIR=/var/lib/syslogng-stats
+OUT="$DIR/stats.prom"
+
+umask 022
+tmp=$(mktemp "$DIR/.stats.XXXXXX") || exit 1
+"$CTL" stats prometheus >"$tmp" 2>&1
+chmod 0644 "$tmp"
+mv -f "$tmp" "$OUT"

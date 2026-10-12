@@ -1,0 +1,248 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a1c09fe31fae4b56b41195ab9b4910ff
+      name: lpavlicek templates
+  templates:
+    - uuid: 3aff8c6d925d4b6eb57988908ef9b393
+      template: syslog-ng by Zabbix agent 2
+      name: syslog-ng by Zabbix agent 2
+      description: 'Monitors TCP connection slots (max-connections) of syslog-ng network sources.
+
+
+        Data source: output of "syslog-ng-ctl stats prometheus" written every minute by a root cron job to {$SYSLOGNG.STATS.FILE} and read by the agent (no sudo, no UserParameter, see README). Requires syslog-ng >= 4.2 (metrics syslogng_socket_connections and syslogng_socket_max_connections); tested with syslog-ng 4.6.0.
+
+
+        Rejected connections are detected from the syslog-ng internal message "Number of allowed concurrent connections reached", written by syslog-ng to a dedicated file {$SYSLOGNG.REJECT.LOG} readable by the zabbix group (active agent log item), because syslog-ng 4.6 does not expose a rejected-connections counter at the default stats level.'
+      vendor:
+        name: lpavlicek
+        version: 7.4-2
+      groups:
+        - name: lpavlicek templates
+      items:
+        - uuid: 15e563966a344875bef7370d446c4c74
+          name: 'syslog-ng: Get stats'
+          key: vfs.file.contents[{$SYSLOGNG.STATS.FILE}]
+          history: '0'
+          value_type: TEXT
+          trends: '0'
+          description: Raw output of "syslog-ng-ctl stats prometheus" read from the file written by the root cron job (master item, not stored).
+          tags:
+            - tag: component
+              value: raw
+        - uuid: a37f063808224368923c41ea95f8c6cc
+          name: 'syslog-ng: Statistics status'
+          type: DEPENDENT
+          key: syslogng.stats.status
+          delay: '0'
+          history: 7d
+          description: 1 = the stats file contains syslog-ng metrics, 0 = syslog-ng-ctl failed in the cron job (syslog-ng not running, wrong path, ...). Freshness of the file is checked separately by the "Stats file modification time" item.
+          valuemap:
+            name: 'syslog-ng: Stats status'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'return value.indexOf(''syslogng_'') !== -1 ? 1 : 0;'
+          master_item:
+            key: vfs.file.contents[{$SYSLOGNG.STATS.FILE}]
+          tags:
+            - tag: component
+              value: health
+          triggers:
+            - uuid: f0c87827aa24466ba1be870d255e5e70
+              expression: last(/syslog-ng by Zabbix agent 2/syslogng.stats.status)=0 or nodata(/syslog-ng by Zabbix agent 2/syslogng.stats.status,5m)=1
+              name: 'syslog-ng: Cannot read statistics'
+              priority: HIGH
+              description: The stats file contains no syslog-ng metrics or no data arrived for 5 minutes. Check that syslog-ng is running and inspect {$SYSLOGNG.STATS.FILE} (it contains the syslog-ng-ctl error message).
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: f6e40c43649f46c583e6b5c5e56ffc1f
+          name: 'syslog-ng: Stats file modification time'
+          key: vfs.file.time[{$SYSLOGNG.STATS.FILE},modify]
+          history: 7d
+          units: unixtime
+          description: Last modification time of {$SYSLOGNG.STATS.FILE}. The root cron job rewrites it every minute.
+          tags:
+            - tag: component
+              value: health
+          triggers:
+            - uuid: a484cd2d55f54b3c84072ebe8208d9a4
+              expression: fuzzytime(/syslog-ng by Zabbix agent 2/vfs.file.time[{$SYSLOGNG.STATS.FILE},modify],{$SYSLOGNG.STATS.MAXAGE})=0
+              name: 'syslog-ng: Stats file is not updated (older than {$SYSLOGNG.STATS.MAXAGE}s)'
+              opdata: 'Last update: {ITEM.LASTVALUE1}'
+              priority: HIGH
+              description: The root cron job that dumps syslog-ng statistics did not rewrite {$SYSLOGNG.STATS.FILE}. All connection metrics are stale. Check the cron entry /etc/cron.d/syslogng-stats and the cron service. Requires time synchronisation between the host and the Zabbix server/proxy.
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: b0aaf33a518e409081bebfbb2916af37
+          name: 'syslog-ng: Rejected connections (internal log)'
+          type: ZABBIX_ACTIVE
+          key: log[{$SYSLOGNG.REJECT.LOG},"Number of allowed concurrent connections reached",,,skip]
+          history: 30d
+          value_type: LOG
+          trends: '0'
+          description: syslog-ng internal messages reporting a rejected connection because max-connections() of a source was reached. syslog-ng writes only these messages to {$SYSLOGNG.REJECT.LOG} (see README, zabbix-maxconn.conf). Requires active checks (ServerActive) and read access for the zabbix group.
+          tags:
+            - tag: component
+              value: connections
+          triggers:
+            - uuid: f28683de129442fba6af2633b4ea7d0b
+              expression: count(/syslog-ng by Zabbix agent 2/log[{$SYSLOGNG.REJECT.LOG},"Number of allowed concurrent connections reached",,,skip],{$SYSLOGNG.REJECT.PERIOD})>0
+              name: 'syslog-ng: TCP connections rejected (max-connections reached)'
+              opdata: '{ITEM.LASTVALUE1}'
+              priority: HIGH
+              manual_close: 'YES'
+              description: syslog-ng rejected at least one incoming connection in the last {$SYSLOGNG.REJECT.PERIOD} because max-connections() was reached. Logs from the rejected clients are lost unless the clients buffer them. The problem resolves automatically when no rejection is logged for {$SYSLOGNG.REJECT.PERIOD}.
+              tags:
+                - tag: scope
+                  value: capacity
+      discovery_rules:
+        - uuid: f736d53676424efe9418703f5fd48efc
+          name: TCP sources discovery
+          type: DEPENDENT
+          key: syslogng.socket.discovery
+          delay: '0'
+          description: 'Discovers syslog-ng stream (TCP/TLS) input drivers that have a max-connections limit. {#ID} is the syslog-ng driver id (source name + #index of the driver within the source); {#ADDRESS} is the listening address.'
+          item_prototypes:
+            - uuid: 781a8f96e35744b291d4e4a05c9dda8e
+              name: 'syslog-ng [{#ID}] {#ADDRESS}: Active TCP connections'
+              type: DEPENDENT
+              key: syslogng.socket.connections["{#ID}"]
+              delay: '0'
+              history: 30d
+              description: Number of currently open connections (occupied slots) of the source driver.
+              preprocessing:
+                - type: PROMETHEUS_PATTERN
+                  parameters:
+                    - syslogng_socket_connections{id="{#ID}",direction="input"}
+                    - value
+                    - ''
+              master_item:
+                key: vfs.file.contents[{$SYSLOGNG.STATS.FILE}]
+              tags:
+                - tag: component
+                  value: connections
+                - tag: source
+                  value: '{#ID}'
+            - uuid: cb030af4f5c24872b992054f0160a0a5
+              name: 'syslog-ng [{#ID}] {#ADDRESS}: Max TCP connections'
+              type: DEPENDENT
+              key: syslogng.socket.max_connections["{#ID}"]
+              delay: '0'
+              history: 30d
+              description: Configured max-connections() limit of the source driver.
+              preprocessing:
+                - type: PROMETHEUS_PATTERN
+                  parameters:
+                    - syslogng_socket_max_connections{id="{#ID}",direction="input"}
+                    - value
+                    - ''
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: vfs.file.contents[{$SYSLOGNG.STATS.FILE}]
+              tags:
+                - tag: component
+                  value: connections
+                - tag: source
+                  value: '{#ID}'
+            - uuid: 5733b90cde2442e48811bc8eaf111ba4
+              name: 'syslog-ng [{#ID}] {#ADDRESS}: TCP connection slot utilization'
+              type: CALCULATED
+              key: syslogng.socket.utilization["{#ID}"]
+              delay: 1m
+              history: 30d
+              value_type: FLOAT
+              units: '%'
+              params: last(//syslogng.socket.connections["{#ID}"])*100/(last(//syslogng.socket.max_connections["{#ID}"])+(last(//syslogng.socket.max_connections["{#ID}"])=0))
+              description: Active connections as a percentage of max-connections().
+              tags:
+                - tag: component
+                  value: connections
+                - tag: source
+                  value: '{#ID}'
+              trigger_prototypes:
+                - uuid: ca57945d02844a528e4f7a44d006f7f1
+                  expression: last(/syslog-ng by Zabbix agent 2/syslogng.socket.utilization["{#ID}"])>={$SYSLOGNG.CONN.HIGH:"{#ID}"}
+                  name: 'syslog-ng [{#ID}] {#ADDRESS}: TCP connection slots nearly exhausted (>={$SYSLOGNG.CONN.HIGH:"{#ID}"}%)'
+                  opdata: '{ITEM.LASTVALUE1}'
+                  priority: HIGH
+                  description: Almost all max-connections() slots of the source are occupied. New connections will be rejected and their logs lost. Increase max-connections() (check LimitNOFILE and log-iw-size()) or investigate stale connections.
+                  tags:
+                    - tag: scope
+                      value: capacity
+                - uuid: b52d066624224c49b34cf256b838a4e8
+                  expression: min(/syslog-ng by Zabbix agent 2/syslogng.socket.utilization["{#ID}"],5m)>={$SYSLOGNG.CONN.WARN:"{#ID}"}
+                  name: 'syslog-ng [{#ID}] {#ADDRESS}: High TCP connection slot utilization (>={$SYSLOGNG.CONN.WARN:"{#ID}"}% for 5m)'
+                  opdata: '{ITEM.LASTVALUE1}'
+                  priority: WARNING
+                  description: TCP connection slot utilization is high. Plan an increase of max-connections().
+                  dependencies:
+                    - name: 'syslog-ng [{#ID}] {#ADDRESS}: TCP connection slots nearly exhausted (>={$SYSLOGNG.CONN.HIGH:"{#ID}"}%)'
+                      expression: last(/syslog-ng by Zabbix agent 2/syslogng.socket.utilization["{#ID}"])>={$SYSLOGNG.CONN.HIGH:"{#ID}"}
+                  tags:
+                    - tag: scope
+                      value: capacity
+          graph_prototypes:
+            - uuid: 498a8905eb8f422f8d578c034d3a1442
+              name: 'syslog-ng [{#ID}] {#ADDRESS}: TCP connections'
+              ymin_type_1: FIXED
+              graph_items:
+                - color: 1A7C11
+                  calc_fnc: ALL
+                  item:
+                    host: syslog-ng by Zabbix agent 2
+                    key: syslogng.socket.connections["{#ID}"]
+                - sortorder: '1'
+                  drawtype: DASHED_LINE
+                  color: F63100
+                  calc_fnc: ALL
+                  item:
+                    host: syslog-ng by Zabbix agent 2
+                    key: syslogng.socket.max_connections["{#ID}"]
+          master_item:
+            key: vfs.file.contents[{$SYSLOGNG.STATS.FILE}]
+          lld_macro_paths:
+            - lld_macro: '{#ADDRESS}'
+              path: $.labels.address
+            - lld_macro: '{#ID}'
+              path: $.labels.id
+          preprocessing:
+            - type: PROMETHEUS_TO_JSON
+              parameters:
+                - syslogng_socket_max_connections{direction="input",transport="stream"}
+      tags:
+        - tag: class
+          value: software
+        - tag: target
+          value: syslog-ng
+      macros:
+        - macro: '{$SYSLOGNG.CONN.HIGH}'
+          value: '95'
+          description: High threshold for TCP connection slot utilization (%). Supports context {#ID}.
+        - macro: '{$SYSLOGNG.CONN.WARN}'
+          value: '80'
+          description: Warning threshold for TCP connection slot utilization (%, 5m minimum). Supports context {#ID}.
+        - macro: '{$SYSLOGNG.REJECT.LOG}'
+          value: /var/log/syslog-ng-maxconn.log
+          description: Dedicated file with syslog-ng "connections reached" messages (owner root, group zabbix, 0640).
+        - macro: '{$SYSLOGNG.STATS.FILE}'
+          value: /var/lib/syslogng-stats/stats.prom
+          description: File with "syslog-ng-ctl stats prometheus" output written by the root cron job.
+        - macro: '{$SYSLOGNG.STATS.MAXAGE}'
+          value: '300'
+          description: Maximum allowed age of the stats file (seconds).
+        - macro: '{$SYSLOGNG.REJECT.PERIOD}'
+          value: 15m
+          description: How long the "connections rejected" problem stays open after the last rejection message.
+      valuemaps:
+        - uuid: f69924823d034d5d8e9a7e7799154e53
+          name: 'syslog-ng: Stats status'
+          mappings:
+            - value: '0'
+              newvalue: Error
+            - value: '1'
+              newvalue: OK

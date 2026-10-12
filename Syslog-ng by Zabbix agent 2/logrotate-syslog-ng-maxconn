@@ -1,0 +1,11 @@
+# Install to /etc/logrotate.d/syslog-ng-maxconn
+# copytruncate avoids reloading syslog-ng (central log server) just for this small file.
+/var/log/syslog-ng-maxconn.log {
+    monthly
+    rotate 12
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
