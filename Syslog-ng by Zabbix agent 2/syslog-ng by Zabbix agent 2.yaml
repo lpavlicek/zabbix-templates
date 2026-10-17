@@ -10,13 +10,13 @@ zabbix_export:
       description: 'Monitors TCP connection slots (max-connections) of syslog-ng network sources.
 
 
-        Data source: output of "syslog-ng-ctl stats prometheus" written every minute by a root cron job to {$SYSLOGNG.STATS.FILE} and read by the agent (no sudo, no UserParameter, see README). Requires syslog-ng >= 4.2 (metrics syslogng_socket_connections and syslogng_socket_max_connections); tested with syslog-ng 4.6.0.
+        Data source: output of "syslog-ng-ctl stats prometheus" written every minute by a root systemd timer to {$SYSLOGNG.STATS.FILE} and read by the agent (no sudo, no UserParameter, see README). Requires syslog-ng >= 4.2 (metrics syslogng_socket_connections and syslogng_socket_max_connections); tested with syslog-ng 4.6.0.
 
 
         Rejected connections are detected from the syslog-ng internal message "Number of allowed concurrent connections reached", written by syslog-ng to a dedicated file {$SYSLOGNG.REJECT.LOG} readable by the zabbix group (active agent log item), because syslog-ng 4.6 does not expose a rejected-connections counter at the default stats level.'
       vendor:
         name: lpavlicek
-        version: 7.4-2
+        version: 7.4-4
       groups:
         - name: lpavlicek templates
       items:
@@ -26,7 +26,7 @@ zabbix_export:
           history: '0'
           value_type: TEXT
           trends: '0'
-          description: Raw output of "syslog-ng-ctl stats prometheus" read from the file written by the root cron job (master item, not stored).
+          description: Raw output of "syslog-ng-ctl stats prometheus" read from the file written by the systemd timer syslogng-stats-dump.timer (master item, not stored).
           tags:
             - tag: component
               value: raw
@@ -36,7 +36,7 @@ zabbix_export:
           key: syslogng.stats.status
           delay: '0'
           history: 7d
-          description: 1 = the stats file contains syslog-ng metrics, 0 = syslog-ng-ctl failed in the cron job (syslog-ng not running, wrong path, ...). Freshness of the file is checked separately by the "Stats file modification time" item.
+          description: 1 = the stats file contains syslog-ng metrics, 0 = syslog-ng-ctl failed in the dump service (syslog-ng not running, wrong path, ...). Freshness of the file is checked separately by the "Stats file modification time" item.
           valuemap:
             name: 'syslog-ng: Stats status'
           preprocessing:
@@ -62,7 +62,7 @@ zabbix_export:
           key: vfs.file.time[{$SYSLOGNG.STATS.FILE},modify]
           history: 7d
           units: unixtime
-          description: Last modification time of {$SYSLOGNG.STATS.FILE}. The root cron job rewrites it every minute.
+          description: Last modification time of {$SYSLOGNG.STATS.FILE}. The systemd timer syslogng-stats-dump.timer rewrites it every minute.
           tags:
             - tag: component
               value: health
@@ -72,7 +72,7 @@ zabbix_export:
               name: 'syslog-ng: Stats file is not updated (older than {$SYSLOGNG.STATS.MAXAGE}s)'
               opdata: 'Last update: {ITEM.LASTVALUE1}'
               priority: HIGH
-              description: The root cron job that dumps syslog-ng statistics did not rewrite {$SYSLOGNG.STATS.FILE}. All connection metrics are stale. Check the cron entry /etc/cron.d/syslogng-stats and the cron service. Requires time synchronisation between the host and the Zabbix server/proxy.
+              description: The systemd timer that dumps syslog-ng statistics did not rewrite {$SYSLOGNG.STATS.FILE}. All connection metrics are stale. Check "systemctl status syslogng-stats-dump.timer syslogng-stats-dump.service" and "journalctl -u syslogng-stats-dump.service". Requires time synchronisation between the host and the Zabbix server/proxy.
               tags:
                 - tag: scope
                   value: availability
@@ -89,12 +89,12 @@ zabbix_export:
               value: connections
           triggers:
             - uuid: f28683de129442fba6af2633b4ea7d0b
-              expression: count(/syslog-ng by Zabbix agent 2/log[{$SYSLOGNG.REJECT.LOG},"Number of allowed concurrent connections reached",,,skip],{$SYSLOGNG.REJECT.PERIOD})>0
+              expression: nodata(/syslog-ng by Zabbix agent 2/log[{$SYSLOGNG.REJECT.LOG},"Number of allowed concurrent connections reached",,,skip],{$SYSLOGNG.REJECT.PERIOD})=0
               name: 'syslog-ng: TCP connections rejected (max-connections reached)'
               opdata: '{ITEM.LASTVALUE1}'
               priority: HIGH
               manual_close: 'YES'
-              description: syslog-ng rejected at least one incoming connection in the last {$SYSLOGNG.REJECT.PERIOD} because max-connections() was reached. Logs from the rejected clients are lost unless the clients buffer them. The problem resolves automatically when no rejection is logged for {$SYSLOGNG.REJECT.PERIOD}.
+              description: syslog-ng rejected at least one incoming connection in the last {$SYSLOGNG.REJECT.PERIOD} because max-connections() was reached. Logs from the rejected clients are lost unless the clients buffer them. The problem resolves automatically when no rejection is logged for {$SYSLOGNG.REJECT.PERIOD} (nodata() is evaluated periodically, independent of incoming values).
               tags:
                 - tag: scope
                   value: capacity
@@ -231,7 +231,7 @@ zabbix_export:
           description: Dedicated file with syslog-ng "connections reached" messages (owner root, group zabbix, 0640).
         - macro: '{$SYSLOGNG.STATS.FILE}'
           value: /var/lib/syslogng-stats/stats.prom
-          description: File with "syslog-ng-ctl stats prometheus" output written by the root cron job.
+          description: File with "syslog-ng-ctl stats prometheus" output written by the systemd timer.
         - macro: '{$SYSLOGNG.STATS.MAXAGE}'
           value: '300'
           description: Maximum allowed age of the stats file (seconds).

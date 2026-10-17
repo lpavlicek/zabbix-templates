@@ -1,3 +1,0 @@
-# Install to /etc/cron.d/syslogng-stats (root:root 0644)
-# Dumps syslog-ng statistics every minute for the Zabbix template "syslog-ng by Zabbix agent 2".
-* * * * * root /usr/local/sbin/syslogng-stats-dump

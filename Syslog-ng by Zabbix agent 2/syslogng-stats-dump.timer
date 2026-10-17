@@ -1,0 +1,15 @@
+# Install to /etc/systemd/system/syslogng-stats-dump.timer (root:root 0644)
+# Enable with: systemctl enable --now syslogng-stats-dump.timer
+
+[Unit]
+Description=Dump syslog-ng statistics for Zabbix every minute
+
+[Timer]
+OnCalendar=minutely
+# The default AccuracySec=1min would allow systemd to shift each run by up to a minute.
+AccuracySec=1s
+# A missed run is not caught up after downtime; the next regular run is enough.
+Persistent=false
+
+[Install]
+WantedBy=timers.target

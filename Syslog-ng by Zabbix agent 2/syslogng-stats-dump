@@ -1,6 +1,6 @@
 #!/bin/sh
 # Dump syslog-ng statistics for the Zabbix template "syslog-ng by Zabbix agent 2".
-# Install to /usr/local/sbin/syslogng-stats-dump (root:root 0755), run as root from cron every minute.
+# Install to /usr/local/sbin/syslogng-stats-dump (root:root 0755), run as root every minute by syslogng-stats-dump.timer (systemd).
 #
 # The output file is world-readable (0644) and is read by the Zabbix agent via vfs.file.contents[].
 # It contains only syslog-ng counters (no log content). If syslog-ng-ctl fails, its error message

@@ -1,0 +1,40 @@
+# Install to /etc/systemd/system/syslogng-stats-dump.service (root:root 0644)
+# Dumps syslog-ng statistics for the Zabbix template "syslog-ng by Zabbix agent 2".
+# Started every minute by syslogng-stats-dump.timer; do not enable this unit directly.
+
+[Unit]
+Description=Dump syslog-ng statistics for Zabbix
+# Ordering only: if syslog-ng is down, the script still runs and writes the
+# syslog-ng-ctl error into the stats file, which the template reports.
+After=syslog-ng.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/syslogng-stats-dump
+# Creates /var/lib/syslogng-stats (root:root 0755) if it does not exist.
+StateDirectory=syslogng-stats
+StateDirectoryMode=0755
+# A hanging syslog-ng-ctl must not block the next runs; the timer does not
+# start a new run while the previous one is still active.
+TimeoutStartSec=30s
+Nice=10
+
+# Suppress the per-run "Starting/Finished/Deactivated" info messages, which would
+# otherwise end up in the journal and, via syslog-ng system(), in /var/log/messages
+# (about 4,000 lines a day). Warnings and errors are still logged.
+LogLevelMax=notice
+
+# Hardening. Writes are limited to the state directory; /run stays writable
+# so that syslog-ng-ctl can connect to the syslog-ng control socket.
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
