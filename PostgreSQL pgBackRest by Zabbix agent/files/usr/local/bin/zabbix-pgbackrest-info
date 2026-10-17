@@ -1,0 +1,35 @@
+#!/bin/sh
+# zabbix-pgbackrest-info - run "pgbackrest info" for the Zabbix agent.
+#
+# Part of the "PostgreSQL pgBackRest by Zabbix agent" template.
+# Install as /usr/local/bin/zabbix-pgbackrest-info, owner root:root, mode 0755.
+#
+# Executed by the Zabbix agent as user postgres via sudo
+# (see /etc/sudoers.d/zabbix-pgbackrest), so the zabbix user needs no direct
+# access to the pgbackrest configuration, repository credentials or SFTP keys.
+#
+# The stanza name comes from the Zabbix item key and is strictly validated:
+# without this, an arbitrary string from the item key would be passed to
+# pgbackrest running as postgres (e.g. extra options such as --config or
+# --cmd-ssh).
+#
+# Usage: zabbix-pgbackrest-info <stanza>
+
+set -eu
+
+PGBACKREST=/usr/bin/pgbackrest
+
+if [ "$#" -ne 1 ]; then
+    echo "usage: $0 <stanza>" >&2
+    exit 2
+fi
+
+case "$1" in
+    ''|-*|*[!A-Za-z0-9_.-]*)
+        echo "invalid stanza name" >&2
+        exit 2
+        ;;
+esac
+
+cd /
+exec "$PGBACKREST" info --output=json --stanza="$1"

@@ -1,0 +1,17 @@
+# Allow the Zabbix agent to read pgbackrest info as user postgres.
+# Part of the "PostgreSQL pgBackRest by Zabbix agent" template.
+#
+# Install as /etc/sudoers.d/zabbix-pgbackrest, owner root:root, mode 0440,
+# and validate with: visudo -cf /etc/sudoers.d/zabbix-pgbackrest
+# (the file name must not contain a dot, otherwise sudo silently ignores it).
+#
+# Only the validating wrapper is allowed, never /usr/bin/pgbackrest directly:
+# a "*" in sudoers also matches spaces, so a rule such as
+# "/usr/bin/pgbackrest info --output=json --stanza=*" would allow appending
+# arbitrary pgbackrest options.
+
+zabbix ALL=(postgres) NOPASSWD: /usr/local/bin/zabbix-pgbackrest-info
+
+# Optional: do not log every successful call (one per stanza every 15 minutes)
+# to auth.log / journal. Reduces the audit trail; requires sudo >= 1.9.10.
+#Defaults!/usr/local/bin/zabbix-pgbackrest-info !log_allowed

@@ -13,8 +13,10 @@ zabbix_export:
         
         Data sources:
           - `pgbackrest info --output=json --stanza=<stanza>` executed by the Zabbix agent
-            (UserParameter `pgbackrest.info`). The zabbix user must be able to read the
-            pgbackrest repository/config, e.g. by membership in the `postgres` group.
+            (UserParameter `pgbackrest.info`) as user postgres via sudo and a small
+            root-owned wrapper script that validates the stanza name. Running it as
+            postgres means the zabbix user needs no direct access to the pgbackrest
+            configuration, repository credentials or SFTP private keys.
           - A daily `pgbackrest check` run by an external systemd timer
             (pgbackrest-check@<stanza>.timer/.service, running as user postgres), with
             console output redirected to `{$PGBACKREST.CHECK.LOG.DIR}/<stanza>-check.log`.
@@ -30,7 +32,7 @@ zabbix_export:
         history, discovered dynamically via LLD.
       vendor:
         name: lpavlicek
-        version: 7.4-2
+        version: 7.4-3
       groups:
         - name: 'lpavlicek templates'
       items:
@@ -53,7 +55,8 @@ zabbix_export:
           history: '0'
           value_type: TEXT
           description: |
-            Raw JSON output of `pgbackrest info --output=json --stanza={$PGBACKREST.STANZA}`.
+            Raw JSON output of `pgbackrest info --output=json --stanza={$PGBACKREST.STANZA}`,
+            executed as user postgres via sudo (see README).
             Not stored in history (TimescaleDB housekeeping ignores per-item history
             overrides, so history is set to 0 here to avoid storing large text blobs).
             Most other pgbackrest.* items (stanza/repo status, archive WAL range, backup
@@ -533,7 +536,12 @@ zabbix_export:
               expression: 'last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.repo.status.code[{#REPO}])<>0 and last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.repo.status.message[{#REPO}])<>""'
               name: 'pgBackRest: Repo {#REPO} status is not OK for stanza {$PGBACKREST.STANZA} ({ITEM.LASTVALUE2})'
               priority: HIGH
-              description: 'This specific repository reports a non-OK status in pgbackrest info.'
+              description: |
+                This specific repository reports a non-OK status in pgbackrest info.
+                The data come from `pgbackrest info` executed as user postgres (via sudo),
+                i.e. with the same SSH known hosts / private keys / credentials as the
+                backups themselves. Resolves automatically once the repository reports
+                status code 0.
               tags:
                 - tag: component
                   value: pgbackrest
@@ -603,9 +611,17 @@ zabbix_export:
   triggers:
     - uuid: d00cb1dad681405ca610eeda92e0f606
       expression: 'last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.stanza.status.code)<>0 and last(/PostgreSQL pgBackRest by Zabbix agent/pgbackrest.stanza.status.message)<>""'
-      name: 'pgBackRest: Stanza {$PGBACKREST.STANZA} status is not OK ({ITEM.LASTVALUE2})'
+      name: 'pgBackRest: Stanza {$PGBACKREST.STANZA} status is not OK ({ITEM.LASTVALUE1})'
+      opdata: '{ITEM.LASTVALUE2}'
       priority: HIGH
-      description: 'The overall stanza status reported by pgbackrest info is not OK.'
+      description: |
+        The overall stanza status reported by pgbackrest info is not OK.
+        The problem name uses the (value-mapped) status code, which is the value that
+        actually fired the trigger; the status message is shown as operational data,
+        which the frontend resolves live. The message item is a separate dependent item
+        that may be written in a different history-sync batch than the code, so using
+        it in the problem name could freeze a stale text such as "ok" into the name.
+        Resolves automatically as soon as pgbackrest info reports status code 0.
       tags:
         - tag: component
           value: pgbackrest
